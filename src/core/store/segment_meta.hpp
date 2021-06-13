@@ -34,8 +34,6 @@
 
 #include "core/common/type.hpp"
 
-#include "core/store/vertex.hpp"
-
 namespace wukong {
 
 using namespace boost::archive;  // NOLINT

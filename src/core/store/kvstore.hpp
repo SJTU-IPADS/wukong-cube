@@ -43,7 +43,6 @@
 
 #include "core/store/rdma_cache.hpp"
 #include "core/store/segment_meta.hpp"
-#include "core/store/vertex.hpp"
 
 #include "utils/math.hpp"
 #include "utils/timer.hpp"

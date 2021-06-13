@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "core/store/vertex.hpp"
 #include "core/store/rdma_cache.hpp"
 
 namespace test {

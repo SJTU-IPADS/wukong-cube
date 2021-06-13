@@ -34,6 +34,7 @@
 #include "loader/posix_loader.hpp"
 
 // store
+#include "core/store/vertex.hpp"
 #include "core/store/gchecker.hpp"
 #include "core/store/static_kvstore.hpp"
 #include "core/store/dynamic_kvstore.hpp"

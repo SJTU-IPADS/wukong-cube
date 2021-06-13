@@ -24,8 +24,6 @@
 
 #include "core/common/global.hpp"
 
-#include "core/store/vertex.hpp"
-
 // utils
 #include "utils/atomic.hpp"
 #include "utils/logger2.hpp"
