@@ -26,17 +26,26 @@
 #include <vector>
 
 #include "core/common/type.hpp"
+#include "core/common/hypertype.hpp"
 
 namespace wukong {
 
-class LoaderInterface {
+class RDFLoaderInterface {
 public:
     virtual void load(const std::string& src,
                       std::vector<std::vector<triple_t>>& triple_pso,
                       std::vector<std::vector<triple_t>>& triple_pos,
                       std::vector<std::vector<triple_attr_t>>& triple_sav) = 0;
 
-    virtual ~LoaderInterface() {}
+    virtual ~RDFLoaderInterface() {}
+};
+
+class HyperGraphLoaderInterface {
+public:
+    virtual void load(const std::string& src,
+                      std::vector<std::vector<HyperEdge>>& hyper_edges) = 0;
+
+    virtual ~HyperGraphLoaderInterface() {}
 };
 
 }  // namespace wukong

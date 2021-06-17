@@ -30,8 +30,7 @@
 #include <vector>
 
 // loader
-#include "loader/hdfs_loader.hpp"
-#include "loader/posix_loader.hpp"
+#include "loader/rdf_loader.hpp"
 
 // store
 #include "core/store/vertex.hpp"

@@ -32,13 +32,10 @@
 #include "core/common/hypertype.hpp"
 
 // loader
-#include "loader/hdfs_loader.hpp"
-#include "loader/posix_loader.hpp"
+#include "loader/hypergraph_loader.hpp"
 
 // store
-#include "core/store/gchecker.hpp"
-#include "core/store/static_kvstore.hpp"
-#include "core/store/dynamic_kvstore.hpp"
+#include "core/store/static_dgraph.hpp"
 
 namespace wukong {
 
@@ -63,14 +60,14 @@ using HEStore = KVStore<hekey_t, iptr_t, sid_t>;
  *  (6)   key = [vid |         pid | index]  value = [heid0, heid1, ..]  i.e., vid's ngbrs w/ predicate
  *  (7)   key = [vid | VERTEX_TYPE |   OUT]  value = [tid0, tid1, ..]  i.e., vid's all types
  */
-class HyperGraph {
+class HyperGraph : public StaticDGraph {
 protected:
     int sid;
     Mem* mem;
     StringServer* str_server;
 
     // all hyperedge types
-    std::vector<sid_t> edge_types;
+    std::vector<HyperEdgeModel> edge_types;
     // all vertex types
     std::vector<sid_t> vertex_types;
 
@@ -89,11 +86,71 @@ protected:
 public:
 
     HyperGraph(int sid, Mem* mem, StringServer* str_server)
-        : sid(sid), mem(mem), str_server(str_server) {
+        : StaticDGraph(sid, mem, str_server) {
+        // TODO: init v2estore and hestore
     }
 
     void load(std::string dname) {
+        StaticDGraph::load(dname);
 
+        uint64_t start, end;
+
+        std::shared_ptr<HyperGraphBaseLoader> loader;
+        // load from hdfs or posix file
+        if (boost::starts_with(dname, "hdfs:"))
+            loader = std::make_shared<HyperGraphHDFSLoader>(sid, mem, str_server);
+        else
+            loader = std::make_shared<HyperGraphPosixLoader>(sid, mem, str_server);
+
+        std::vector<std::vector<HyperEdge>> hyper_edges;
+
+        start = timer::get_usec();
+        loader->load(dname, hyper_edges);
+        end = timer::get_usec();
+        logstream(LOG_INFO) << "[HyperGraphLoader] #" << sid << ": " << (end - start) / 1000 << "ms "
+                            << "for loading hyperedges from disk to memory." << LOG_endl;
+
+        auto count_hyperedge_types = [this](const std::string str_idx_file, bool is_attr = false) {
+            std::string edge_type;
+            int pid, index_num;
+            std::ifstream ifs(str_idx_file.c_str());
+            while (ifs >> edge_type >> pid >> index_num) {
+                HyperEdgeModel edge_model;
+                edge_model.type_id = pid;
+                edge_model.index_num = index_num;
+                edge_model.index_size.resize(index_num);
+                edge_model.index_type_hint.resize(index_num);
+                for(int i = 0; i < index_num; i++){
+                    ifs >> edge_model.index_size[i];
+                }
+                this->edge_types.push_back(edge_model);
+            }
+            ifs.close();
+        };
+
+        count_hyperedge_types(dname + "hyper_str_index");
+        if (this->edge_types.size() <= 1) {
+            logstream(LOG_ERROR) << "Encoding file of predicates should be named as \"str_index\". Graph loading failed. Please quit and try again." << LOG_endl;
+        }
+
+        // initiate gstore (kvstore) after loading and exchanging triples (memory reused)
+        gstore->refresh();
+
+        start = timer::get_usec();
+        // TODO: init v2estore
+        end = timer::get_usec();
+        logstream(LOG_INFO) << "[RDFGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
+                            << "for initializing v2estore." << LOG_endl;
+
+        start = timer::get_usec();
+        // TODO: init hestore
+        end = timer::get_usec();
+        logstream(LOG_INFO) << "[RDFGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
+                            << "for initializing hestore." << LOG_endl;
+
+        logstream(LOG_INFO) << "[RDFGraph] #" << sid << ": loading HyperGraph is finished" << LOG_endl;
+
+        print_graph_stat();
     }
 
     virtual ~HyperGraph() {}
@@ -103,8 +160,8 @@ public:
     // return total num of vertex types
     inline int get_num_vertex_types() const { return this->vertex_types.size(); }
     
-    inline std::vector<sid_t> get_edge_types() const { return this->edge_predicates; }
-    inline std::vector<sid_t> get_vertex_types() const { return this->type_predicates; }
+    inline std::vector<HyperEdgeModel> get_edge_types() const { return this->edge_types; }
+    inline std::vector<sid_t> get_vertex_types() const { return this->vertex_types; }
     
     virtual std::vector<HyperEdge*> get_hyper_edges(int tid, sid_t vid, sid_t edge_type, int index) {
 

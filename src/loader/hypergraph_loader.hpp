@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016 Shanghai Jiao Tong University.
+ * Copyright (c) 2021 Shanghai Jiao Tong University.
  *     All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -50,7 +50,7 @@
 
 namespace wukong {
 
-class BaseLoader : public LoaderInterface {
+class HyperGraphBaseLoader : public HyperGraphLoaderInterface {
 protected:
     int sid;
     Mem* mem;
@@ -504,10 +504,10 @@ protected:
     }
 
 public:
-    BaseLoader(int sid, Mem* mem, StringServer* str_server)
+    HyperGraphBaseLoader(int sid, Mem* mem, StringServer* str_server)
         : sid(sid), mem(mem), str_server(str_server) {}
 
-    virtual ~BaseLoader() {}
+    virtual ~HyperGraphBaseLoader() {}
 
     virtual std::istream* init_istream(const std::string& src) = 0;
     virtual void close_istream(std::istream* stream) = 0;
@@ -561,6 +561,76 @@ public:
         end = timer::get_usec();
         logstream(LOG_INFO) << "[Loader] #" << sid << ": " << (end - start) / 1000 << " ms "
                             << "for loading attribute files" << LOG_endl;
+    }
+};
+
+
+class HyperGraphPosixLoader : public HyperGraphBaseLoader {
+public:
+    HyperGraphPosixLoader(int sid, Mem* mem, StringServer* str_server)
+        : HyperGraphBaseLoader(sid, mem, str_server) {}
+
+    ~HyperGraphPosixLoader() {}
+
+    std::istream* init_istream(const std::string& src) {
+        return new std::ifstream(src.c_str());
+    }
+
+    void close_istream(std::istream* stream) {
+        static_cast<std::ifstream*>(stream)->close();
+        delete stream;
+    }
+
+    std::vector<std::string> list_files(const std::string& src, std::string prefix) {
+        DIR* dir = opendir(src.c_str());
+        if (dir == NULL) {
+            logstream(LOG_ERROR) << "failed to open directory (" << src
+                                 << ") at server " << sid << LOG_endl;
+            exit(-1);
+        }
+
+        std::vector<std::string> files;
+        struct dirent* ent;
+        while ((ent = readdir(dir)) != NULL) {
+            if (ent->d_name[0] == '.')
+                continue;
+
+            std::string fname(src + ent->d_name);
+            // Assume the fnames (ID-format) start with the prefix.
+            if (boost::starts_with(fname, src + prefix))
+                files.push_back(fname);
+        }
+        return files;
+    }
+};
+
+
+class HyperGraphHDFSLoader : public HyperGraphBaseLoader {
+public:
+    HyperGraphHDFSLoader(int sid, Mem* mem, StringServer* str_server)
+        : HyperGraphBaseLoader(sid, mem, str_server) {}
+
+    ~HyperGraphHDFSLoader() {}
+
+    std::istream* init_istream(const std::string& src) {
+        wukong::hdfs& hdfs = wukong::hdfs::get_hdfs();
+        return new wukong::hdfs::fstream(hdfs, src);
+    }
+
+    void close_istream(std::istream* stream) {
+        static_cast<wukong::hdfs::fstream*>(stream)->close();
+        delete stream;
+    }
+
+    std::vector<std::string> list_files(const std::string& src, std::string prefix) {
+        if (!wukong::hdfs::has_hadoop()) {
+            logstream(LOG_ERROR) << "attempting to load data files from HDFS "
+                                 << "but Wukong was built without HDFS." << LOG_endl;
+            exit(-1);
+        }
+
+        wukong::hdfs& hdfs = wukong::hdfs::get_hdfs();
+        return std::vector<std::string>(hdfs.list_files(src, prefix));
     }
 };
 

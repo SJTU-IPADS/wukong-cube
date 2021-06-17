@@ -30,6 +30,14 @@ namespace wukong {
 
 using heid_t = uint64_t;
 
+class HyperEdgeModel {
+public:
+    sid_t type_id;
+    int index_num;
+    std::vector<sid_t> index_type_hint;
+    std::vector<int> index_size;
+};
+
 class HyperEdge {
 public:
     sid_t edge_type; 
