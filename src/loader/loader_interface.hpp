@@ -43,7 +43,9 @@ public:
 class HyperGraphLoaderInterface {
 public:
     virtual void load(const std::string& src,
-                      std::vector<std::vector<HyperEdge>>& hyper_edges) = 0;
+                      std::map<sid_t, HyperEdgeModel>& edge_models,
+                      std::vector<std::vector<HyperEdge>>& edges,
+                      std::vector<std::vector<V2ETriple>>& v2etriples) = 0;
 
     virtual ~HyperGraphLoaderInterface() {}
 };

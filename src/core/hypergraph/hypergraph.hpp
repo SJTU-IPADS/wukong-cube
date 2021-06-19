@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "core/common/hypertype.hpp"
+#include "core/hypergraph/hypervertex.hpp"
 
 // loader
 #include "loader/hypergraph_loader.hpp"
@@ -60,7 +61,7 @@ using HEStore = KVStore<hekey_t, iptr_t, sid_t>;
  *  (6)   key = [vid |         pid | index]  value = [heid0, heid1, ..]  i.e., vid's ngbrs w/ predicate
  *  (7)   key = [vid | VERTEX_TYPE |   OUT]  value = [tid0, tid1, ..]  i.e., vid's all types
  */
-class HyperGraph : public StaticDGraph {
+class HyperGraph : public StaticRDFGraph {
 protected:
     int sid;
     Mem* mem;
@@ -68,6 +69,7 @@ protected:
 
     // all hyperedge types
     std::vector<HyperEdgeModel> edge_types;
+    std::map<sid_t, HyperEdgeModel> edge_models;
     // all vertex types
     std::vector<sid_t> vertex_types;
 
@@ -81,17 +83,18 @@ protected:
     // TODO vtype-index (temp variable)
     // TODO etype-index (temp variable)
 
-    virtual void init_gstore(std::vector<std::vector<HyperEdge>>& hyperedges) = 0;
+    virtual void init_gstore(std::vector<std::vector<HyperEdge>>& hyperedges,
+                             std::vector<std::vector<V2ETriple>>& v2etriples) = 0;
 
 public:
 
     HyperGraph(int sid, Mem* mem, StringServer* str_server)
-        : StaticDGraph(sid, mem, str_server) {
+        : StaticRDFGraph(sid, mem, str_server) {
         // TODO: init v2estore and hestore
     }
 
     void load(std::string dname) {
-        StaticDGraph::load(dname);
+        StaticRDFGraph::load(dname);
 
         uint64_t start, end;
 
@@ -102,13 +105,8 @@ public:
         else
             loader = std::make_shared<HyperGraphPosixLoader>(sid, mem, str_server);
 
-        std::vector<std::vector<HyperEdge>> hyper_edges;
-
-        start = timer::get_usec();
-        loader->load(dname, hyper_edges);
-        end = timer::get_usec();
-        logstream(LOG_INFO) << "[HyperGraphLoader] #" << sid << ": " << (end - start) / 1000 << "ms "
-                            << "for loading hyperedges from disk to memory." << LOG_endl;
+        std::vector<std::vector<HyperEdge>> hyperedges;
+        std::vector<std::vector<V2ETriple>> v2etriples;
 
         auto count_hyperedge_types = [this](const std::string str_idx_file, bool is_attr = false) {
             std::string edge_type;
@@ -124,6 +122,7 @@ public:
                     ifs >> edge_model.index_size[i];
                 }
                 this->edge_types.push_back(edge_model);
+                this->edge_models[pid] = edge_model;
             }
             ifs.close();
         };
@@ -132,6 +131,12 @@ public:
         if (this->edge_types.size() <= 1) {
             logstream(LOG_ERROR) << "Encoding file of predicates should be named as \"str_index\". Graph loading failed. Please quit and try again." << LOG_endl;
         }
+
+        start = timer::get_usec();
+        loader->load(dname, edge_models, hyperedges, v2etriples);
+        end = timer::get_usec();
+        logstream(LOG_INFO) << "[HyperGraphLoader] #" << sid << ": " << (end - start) / 1000 << "ms "
+                            << "for loading hyperedges from disk to memory." << LOG_endl;
 
         // initiate gstore (kvstore) after loading and exchanging triples (memory reused)
         gstore->refresh();

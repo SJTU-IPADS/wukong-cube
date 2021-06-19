@@ -38,11 +38,47 @@ public:
     std::vector<int> index_size;
 };
 
+struct V2ETriple {
+    heid_t eid;
+    sid_t vid;
+    int index;
+
+    bool operator==(const V2ETriple& triple) const {
+        // TODO
+        return false;
+    }
+};
+
 class HyperEdge {
 public:
+    heid_t id;
     sid_t edge_type; 
     std::vector<sid_t> vertices;
     // TODO: attribue
+
+    int get_num_ids() {
+        // edge_type + id_num + ids
+        return vertices.size() + 2;
+    }
+
+    bool operator==(const HyperEdge& edge) const {
+        // TODO
+        return false;
+    }
+};
+
+struct v2etriple_sort {
+    inline bool operator()(const V2ETriple &t1, const V2ETriple &t2) {
+        // TODO
+        return false;
+    }
+};
+
+struct hyperedge_sort {
+    inline bool operator()(const HyperEdge &e1, const HyperEdge &e2) {
+        // TODO
+        return false;
+    }
 };
 
 }

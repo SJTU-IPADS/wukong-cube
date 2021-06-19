@@ -24,7 +24,7 @@
 #include <sstream>
 #include <string>
 
-#include "store/vertex.hpp"
+#include "core/store/vertex.hpp"
 
 // utils
 #include "utils/math.hpp"
@@ -43,34 +43,29 @@ namespace wukong {
 enum { EDGE_TYPE = 0,
        VERTEX_TYPE = 1 };
 
-static inline bool is_tpid(ssid_t id) { return (id > 1) && (id < (1 << NBITS_TYPE)); }
-
-static inline bool is_vid(ssid_t id) { return id >= (1 << NBITS_TYPE); }
-
 /**
  * hypergraph-friendly key/value store
  * key: id | type | index
  * value: heid/tid list
  */
-struct hkey_t {
+struct hvkey_t {
     uint64_t idx  : NBITS_IDX;  // index
     uint64_t type : NBITS_TYPE;   // vertex/edge type
     uint64_t id   : NBITS_ID;     // vertex/edge id
 
-    hkey_t() : id(0), type(0), idx(0) {}
+    hvkey_t() : id(0), type(0), idx(0) {}
 
-    hkey_t(uint64_t id, uint64_t type, uint64_t idx) : id(id), type(type), idx(idx) {
+    hvkey_t(uint64_t id, uint64_t type, uint64_t idx) : id(id), type(type), idx(idx) {
         assert((this->id == id) && (this->type == type) && (this->idx == idx));  // no key truncate
     }
 
-    bool operator==(const hkey_t& key) const {
+    bool operator==(const hvkey_t& key) const {
         if ((id == key.id) && (type == key.type) && (idx == key.idx))
             return true;
         return false;
     }
-    // clang-format on
 
-    bool operator!=(const hkey_t& key) const { return !(operator==(key)); }
+    bool operator!=(const hvkey_t& key) const { return !(operator==(key)); }
 
     bool is_empty() { return ((id == 0) && (type == 0) && (idx == 0)); }
 
@@ -95,20 +90,53 @@ struct hkey_t {
     }
 };
 
-struct hkey_Hasher {
-    static size_t hash(const hkey_t& k) {
+struct hekey_t {
+    heid_t id;  // hyperedge id
+
+    hekey_t() : id(0) {}
+
+    hekey_t(heid_t id) : id(id) {}
+
+    bool operator==(const hekey_t& key) const {
+        return (id == key.id);
+    }
+
+    bool operator!=(const hekey_t& key) const { return !(operator==(key)); }
+
+    bool is_empty() { return (id == 0); }
+
+    std::string to_string() {
+        std::ostringstream ss;
+        ss << "[" << id << "]";
+        return ss.str();
+    }
+
+    uint64_t hash() const {
+        // the standard hash is too slow
+        // (i.e., std::hash<uint64_t>()(r))
+        return wukong::math::hash_u64(id);
+    }
+};
+
+
+struct hvkey_Hasher {
+    static size_t hash(const hvkey_t& k) {
         return k.hash();
     }
 
-    static bool equal(const hkey_t& x, const hkey_t& y) {
+    static bool equal(const hvkey_t& x, const hvkey_t& y) {
         return x.operator==(y);
     }
 };
 
-// 128-bit vertex (key)
-struct hvertex_t {
-    hkey_t key;  // 64-bit: vertex | predicate | direction
-    iptr_t ptr;  // 64-bit: size | offset
+struct hekey_Hasher {
+    static size_t hash(const hekey_t& k) {
+        return k.hash();
+    }
+
+    static bool equal(const hekey_t& x, const hekey_t& y) {
+        return x.operator==(y);
+    }
 };
 
 }  // namespace wukong

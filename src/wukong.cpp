@@ -42,6 +42,7 @@
 #else
 #include "core/store/static_dgraph.hpp"
 #include "core/store/segment_dgraph.hpp"
+#include "core/hypergraph/hypergraph.hpp"
 #endif
 
 #include "core/network/adaptor.hpp"

@@ -56,7 +56,8 @@ protected:
     Mem* mem;
     StringServer* str_server;
 
-    std::vector<uint64_t> num_triples;  // record #triples loaded from input data for each server
+    std::vector<uint64_t> num_hyperedges;  // record #hyperedges loaded from input data for each server
+    std::vector<uint64_t> num_datas;  // record #sids loaded from input data for each server
 
     uint64_t inline floor(uint64_t original, uint64_t n) {
         ASSERT(n != 0);
@@ -70,52 +71,60 @@ protected:
         return original - original % n + n;
     }
 
-    void dedup_triples(std::vector<triple_t>& triples) {
-        if (triples.size() <= 1)
+    heid_t generate_heid(int sid, int tid, int index) {
+        heid_t id = Global::num_servers * Global::num_engines * index
+                    + tid * Global::num_servers + sid;
+        return id;
+    }
+
+    template<class DataType>
+    void dedup_data(std::vector<DataType>& data) {
+        if (data.size() <= 1)
             return;
 
         uint64_t n = 1;
-        for (uint64_t i = 1; i < triples.size(); i++) {
-            if (triples[i] == triples[i - 1]) {
+        for (uint64_t i = 1; i < data.size(); i++) {
+            if (data[i] == data[i - 1]) {
                 continue;
             }
 
-            triples[n++] = triples[i];
+            data[n++] = data[i];
         }
-        triples.resize(n);
+        data.resize(n);
     }
 
-    void flush_triples(int tid, int dst_sid) {
-        uint64_t buf_sz = floor(mem->buffer_size() / Global::num_servers - sizeof(uint64_t), sizeof(triple_t));
+    template<class DataType>
+    void flush_data(int tid, int dst_sid) {
+        uint64_t buf_sz = floor(mem->buffer_size() / Global::num_servers - sizeof(uint64_t), sizeof(DataType));
         uint64_t* pn = reinterpret_cast<uint64_t*>(mem->buffer(tid) + (buf_sz + sizeof(uint64_t)) * dst_sid);
-        triple_t* buf = reinterpret_cast<triple_t*>(pn + 1);
+        DataType* buf = reinterpret_cast<DataType*>(pn + 1);
 
-        // the 1st uint64_t of buffer records #new-triples
+        // the 1st uint64_t of buffer records #new-hyperedges
         uint64_t n = *pn;
 
         // the kvstore is temporally split into #servers pieces.
         // hence, the kvstore can be directly RDMA write in parallel by all servers
-        uint64_t kvs_sz = floor(mem->kvstore_size() / Global::num_servers - sizeof(uint64_t), sizeof(triple_t));
+        uint64_t kvs_sz = floor(mem->kvstore_size() / Global::num_servers - sizeof(uint64_t), sizeof(sid_t));
 
         // serialize the RDMA WRITEs by multiple threads
-        uint64_t exist = __sync_fetch_and_add(&num_triples[dst_sid], n);
+        uint64_t exist = __sync_fetch_and_add(&num_datas[dst_sid], n);
 
-        uint64_t cur_sz = (exist + n) * sizeof(triple_t);
+        uint64_t cur_sz = (exist + n) * sizeof(DataType);
         if (cur_sz > kvs_sz) {
             logstream(LOG_ERROR) << "no enough space to store input data!" << LOG_endl;
             logstream(LOG_ERROR) << " kvstore size = " << kvs_sz
-                                 << " #exist-triples = " << exist
-                                 << " #new-triples = " << n
+                                 << " #exist-hyperedges = " << exist
+                                 << " #new-hyperedges = " << n
                                  << LOG_endl;
             ASSERT(false);
         }
 
-        // send triples and clear the buffer
+        // send hyperedges and clear the buffer
         uint64_t off = (kvs_sz + sizeof(uint64_t)) * sid
-                        + sizeof(uint64_t)           // reserve the 1st uint64_t as #triples
-                        + exist * sizeof(triple_t); // skip #exist-triples
+                        + sizeof(uint64_t)           // reserve the 1st uint64_t as #hyperedges
+                        + exist * sizeof(DataType); // skip #exist-data
         
-        uint64_t sz = n * sizeof(triple_t);        // send #new-triples
+        uint64_t sz = n * sizeof(DataType);        // send #new-data
 
         if (dst_sid != sid) {
             RDMA& rdma = RDMA::get_rdma();
@@ -128,53 +137,90 @@ protected:
         *pn = 0;
     }
 
-    // send_triple can be safely called by multiple threads,
+    // send_hyperedge can be safely called by multiple threads,
     // since the buffer is exclusively used by one thread.
-    void send_triple(int tid, int dst_sid, triple_t triple) {
+    void send_hyperedge(int tid, int dst_sid, HyperEdge& edge) {
         // the RDMA buffer is first split into #threads partitions
         // each partition is further split into #servers pieces
-        // each piece: #triples, tirple, triple, . . .
-        uint64_t buf_sz = floor(mem->buffer_size() / Global::num_servers - sizeof(uint64_t), sizeof(triple_t));
+        // each piece: #hyperedges, tirple, triple, . . .
+        uint64_t buf_sz = floor(mem->buffer_size() / Global::num_servers - sizeof(uint64_t), sizeof(sid_t));
         uint64_t* pn = reinterpret_cast<uint64_t*>(mem->buffer(tid) + (buf_sz + sizeof(uint64_t)) * dst_sid);
-        triple_t* buf = reinterpret_cast<triple_t*>(pn + 1);
+        sid_t* buf = reinterpret_cast<sid_t*>(pn + 1);
 
-        // the 1st entry of buffer records #triples (suppose the )
+        // the 1st entry of buffer records #hyperedges (suppose the )
         uint64_t n = *pn;
 
+        int num_ids = edge.get_num_ids();
+
         // flush buffer if there is no enough space to buffer a new triple
-        uint64_t cur_sz = (n + 1) * sizeof(triple_t);
+        uint64_t cur_sz = (n + num_ids) * sizeof(sid_t);
         if (cur_sz > buf_sz) {
-            flush_triples(tid, dst_sid);
+            flush_data<sid_t>(tid, dst_sid);
             n = *pn;  // reset, it should be 0
             ASSERT(n == 0);
         }
 
-        // buffer the triple and update the counter
+        // buffer the hyperedge and update the counter
+        buf[n] = edge.edge_type;
+        buf[n+1] = edge.vertices.size();
+        std::copy(edge.vertices.begin(), edge.vertices.end(), &buf[n+2]);
+        *pn = (n + num_ids);
+    }
+
+    // send_v2e can be safely called by multiple threads,
+    // since the buffer is exclusively used by one thread.
+    void send_v2e(int tid, int dst_sid, V2ETriple& triple) {
+        // the RDMA buffer is first split into #threads partitions
+        // each partition is further split into #servers pieces
+        // each piece: #hyperedges, tirple, triple, . . .
+        uint64_t buf_sz = floor(mem->buffer_size() / Global::num_servers - sizeof(uint64_t), sizeof(V2ETriple));
+        uint64_t* pn = reinterpret_cast<uint64_t*>(mem->buffer(tid) + (buf_sz + sizeof(uint64_t)) * dst_sid);
+        V2ETriple* buf = reinterpret_cast<V2ETriple*>(pn + 1);
+
+        // the 1st entry of buffer records #hyperedges
+        uint64_t n = *pn;
+
+        // flush buffer if there is no enough space to buffer a new triple
+        uint64_t cur_sz = (n + 1) * sizeof(V2ETriple);
+        if (cur_sz > buf_sz) {
+            flush_data<V2ETriple>(tid, dst_sid);
+            n = *pn;  // reset, it should be 0
+            ASSERT(n == 0);
+        }
+
+        // buffer the hyperedge and update the counter
         buf[n] = triple;
         *pn = (n + 1);
     }
 
-    int read_partial_exchange(std::vector<std::string>& fnames) {
+    int read_partial_exchange(std::map<sid_t, HyperEdgeModel>& edge_models, 
+                              std::vector<std::string>& fnames) {
         // ensure the file name list has the same order on all servers
         std::sort(fnames.begin(), fnames.end());
 
         auto lambda = [&](std::istream& file, int localtid) {
-            triple_t triple;
-        #ifdef TRDF_MODE
-            while (file >> triple.s >> triple.p >> triple.o >> triple.ts >> triple.te) {
-        #else
-            while (file >> triple.s >> triple.p >> triple.o) {
-        #endif
-                int s_sid = PARTITION(triple.s);
-                int o_sid = PARTITION(triple.o);
-                if (s_sid == o_sid) {
-                    send_triple(localtid, s_sid, triple);
-                } else {
-                    send_triple(localtid, s_sid, triple);
-                    send_triple(localtid, o_sid, triple);
+            HyperEdge edge;
+            while (file >> edge.edge_type) {
+                ASSERT(edge_models.count(edge.edge_type));
+                int num_ids = edge_models[edge.edge_type].index_num;
+                edge.vertices.resize(num_ids);
+                for(int i = 0; i < num_ids; i++){
+                    file >> edge.vertices[i];
                 }
+                // TODO: more balanced partition
+                int dst_sid = PARTITION(edge.vertices[0]);
+                send_hyperedge(localtid, dst_sid, edge);
             }
         };
+
+        // init #cnt
+        for (int s = 0; s < Global::num_servers; s++) {
+            for (int t = 0; t < Global::num_engines; t++) {
+                uint64_t buf_sz = floor(mem->buffer_size() / Global::num_servers - sizeof(uint64_t), sizeof(sid_t));
+                uint64_t* pn = reinterpret_cast<uint64_t*>(mem->buffer(t) + (buf_sz + sizeof(uint64_t)) * s);
+                *pn = 0;
+            }
+        }
 
         // load input data and assign to different severs in parallel
         int num_files = fnames.size();
@@ -190,17 +236,74 @@ protected:
             close_istream(file);
         }
 
-        // flush the rest triples within each RDMA buffer
+        // flush the rest hyperedges within each RDMA buffer
         for (int s = 0; s < Global::num_servers; s++)
             for (int t = 0; t < Global::num_engines; t++)
-                flush_triples(t, s);
+                flush_data<sid_t>(t, s);
 
-        // exchange #triples among all servers
+        // exchange #hyperedges among all servers
         for (int s = 0; s < Global::num_servers; s++) {
             uint64_t* buf = reinterpret_cast<uint64_t*>(mem->buffer(0));
-            buf[0] = num_triples[s];
+            buf[0] = num_datas[s];
 
-            uint64_t kvs_sz = floor(mem->kvstore_size() / Global::num_servers - sizeof(uint64_t), sizeof(triple_t));
+            uint64_t kvs_sz = floor(mem->kvstore_size() / Global::num_servers - sizeof(uint64_t), sizeof(sid_t));
+            uint64_t offset = (kvs_sz + sizeof(uint64_t)) * sid;
+            if (s != sid) {
+                RDMA& rdma = RDMA::get_rdma();
+                rdma.dev->RdmaWrite(0, s, reinterpret_cast<char*>(buf), sizeof(uint64_t), offset);
+            } else {
+                memcpy(mem->kvstore() + offset, reinterpret_cast<char*>(buf), sizeof(uint64_t));
+            }
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        return Global::num_servers;
+    }
+
+    int exchange_v2e_triples(std::vector<std::vector<HyperEdge>>& edges) {
+        // init #cnt
+        for (int s = 0; s < Global::num_servers; s++) {
+            for (int t = 0; t < Global::num_engines; t++) {
+                uint64_t buf_sz = floor(mem->buffer_size() / Global::num_servers - sizeof(uint64_t), sizeof(V2ETriple));
+                uint64_t* pn = reinterpret_cast<uint64_t*>(mem->buffer(t) + (buf_sz + sizeof(uint64_t)) * s);
+                *pn = 0;
+            }
+        }
+
+        // start from 1: avoid assign edge id to 0
+        std::vector<uint64_t> edge_index(Global::num_engines, 1);
+        #pragma omp parallel for num_threads(Global::num_engines)
+        for(int i = 0; i < edges.size(); i++) {
+            int localtid = omp_get_thread_num();
+            int index_start = edge_index[localtid];
+            // TODO: send v2e triples
+            // generate id for each hyperedge
+            for(int j = 0; j < edges[i].size(); j++){
+                edges[i][j].id = generate_heid(sid, localtid, index_start+j);
+                for(int k = 0; k < edges[i][j].vertices.size(); k++){
+                    int dst_sid = PARTITION(edges[i][j].vertices[k]);
+                    V2ETriple triple;
+                    triple.eid = edges[i][j].id;
+                    triple.vid = edges[i][j].vertices[k];
+                    // FIXME: should call HyperEdgeModel.get_index(int pos)
+                    triple.index = k;
+                    send_v2e(localtid, dst_sid, triple);
+                }
+            }
+            edge_index[localtid] += edges[i].size();
+        }
+
+        // flush the rest hyperedges within each RDMA buffer
+        for (int s = 0; s < Global::num_servers; s++)
+            for (int t = 0; t < Global::num_engines; t++)
+                flush_data<V2ETriple>(t, s);
+
+        // exchange #hyperedges among all servers
+        for (int s = 0; s < Global::num_servers; s++) {
+            uint64_t* buf = reinterpret_cast<uint64_t*>(mem->buffer(0));
+            buf[0] = num_datas[s];
+
+            uint64_t kvs_sz = floor(mem->kvstore_size() / Global::num_servers - sizeof(uint64_t), sizeof(V2ETriple));
             uint64_t offset = (kvs_sz + sizeof(uint64_t)) * sid;
             if (s != sid) {
                 RDMA& rdma = RDMA::get_rdma();
@@ -215,38 +318,49 @@ protected:
     }
 
     // selectively load own partitioned data from all files
-    int read_all_files(std::vector<std::string>& fnames) {
+    int read_all_files(std::map<sid_t, HyperEdgeModel>& edge_models, 
+                       std::vector<std::string>& fnames) {
         std::sort(fnames.begin(), fnames.end());
 
-        auto lambda = [&](std::istream& file, uint64_t& n, uint64_t kvs_sz, triple_t* kvs) {
-            triple_t triple;
-        #ifdef TRDF_MODE
-            while (file >> triple.s >> triple.p >> triple.o >> triple.ts >> triple.te) {
-        #else
-            while (file >> triple.s >> triple.p >> triple.o) {
-        #endif
-                int s_sid = PARTITION(triple.s);
-                int o_sid = PARTITION(triple.o);
-                if ((s_sid == sid) || (o_sid == sid)) {
-                    ASSERT((n + 1) * sizeof(triple_t) <= kvs_sz);
-                    // buffer the triple and update the counter
-                    kvs[n] = triple;
-                    n++;
+        auto lambda = [&](std::istream& file, uint64_t& n, uint64_t kvs_sz, sid_t* kvs) {
+            HyperEdge edge;
+            while (file >> edge.edge_type) {
+                ASSERT(edge_models.count(edge.edge_type));
+                int num_ids = edge_models[edge.edge_type].index_num;
+                edge.vertices.resize(num_ids);
+                for(int i = 0; i < num_ids; i++){
+                    file >> edge.vertices[i];
+                }
+                // TODO: more balanced partition
+                int dst_sid = PARTITION(edge.vertices[0]);
+                if (dst_sid == sid) {
+                    ASSERT((n + edge.get_num_ids()) * sizeof(sid_t) <= kvs_sz);
+                    // buffer the hyperedge and update the counter
+                    kvs[n] = edge.edge_type;
+                    kvs[n+1] = edge.vertices.size();
+                    std::copy(edge.vertices.begin(), edge.vertices.end(), &kvs[n+2]);
+                    n += edge.get_num_ids();
                 }
             }
         };
 
+        // init #cnt
+        for (int t = 0; t < Global::num_engines; t++) {
+            uint64_t kvs_sz = floor(mem->kvstore_size() / Global::num_engines - sizeof(uint64_t), sizeof(sid_t));
+            uint64_t* pn = reinterpret_cast<uint64_t*>(mem->kvstore() + (kvs_sz + sizeof(uint64_t)) * t);
+            *pn = 0;
+        }
 
         int num_files = fnames.size();
         #pragma omp parallel for num_threads(Global::num_engines)
         for (int i = 0; i < num_files; i++) {
             int localtid = omp_get_thread_num();
             uint64_t kvs_sz = floor(mem->kvstore_size() / Global::num_engines - sizeof(uint64_t),
-                                    sizeof(triple_t));
+                                    sizeof(sid_t));
             uint64_t* pn = reinterpret_cast<uint64_t*>(mem->kvstore() + (kvs_sz + sizeof(uint64_t)) * localtid);
-            triple_t* kvs = reinterpret_cast<triple_t*>(pn + 1);
+            sid_t* kvs = reinterpret_cast<sid_t*>(pn + 1);
 
-            // the 1st uint64_t of kvs records #triples
+            // the 1st uint64_t of kvs records #hyperedges
             uint64_t n = *pn;
 
             std::istream* file = init_istream(fnames[i]);
@@ -259,85 +373,23 @@ protected:
         return Global::num_engines;
     }
 
-    // selectively load own partitioned data (attributes) from all files
-    void load_attr_from_allfiles(std::vector<std::string>& fnames, std::vector<std::vector<triple_attr_t>>& triple_sav) {
-        if (fnames.size() == 0)
-            return;  // no attributed files
-
-        std::sort(fnames.begin(), fnames.end());
-
-        auto load_attr = [&](std::istream& file, int localtid) {
-            sid_t s, a;
-            attr_t v;
-            int type;
-            while (file >> s >> a >> type) {
-                switch (type) {
-                case INT_t: {
-                    int i;
-                    file >> i;
-                    v = i;
-                    break;
-                }
-                case FLOAT_t: {
-                    float f;
-                    file >> f;
-                    v = f;
-                    break;
-                }
-                case DOUBLE_t: {
-                    double d;
-                    file >> d;
-                    v = d;
-                    break;
-                }
-                default:
-                    logstream(LOG_ERROR) << "Unsupported value type" << LOG_endl;
-                    break;
-                }
-
-                if (sid == PARTITION(s))
-                    triple_sav[localtid].push_back(triple_attr_t(s, a, v));
-            }
-        };
-
-        // parallel load from all files
-        int num_files = fnames.size();
-        #pragma omp parallel for num_threads(Global::num_engines)
-        for (int i = 0; i < num_files; i++) {
-            int localtid = omp_get_thread_num();
-
-            // load from hdfs or posix file
-            std::istream* file = init_istream(fnames[i]);
-            load_attr(*file, localtid);
-            close_istream(file);
-        }
-    }
-
-    void sort_attr(std::vector<std::vector<triple_attr_t>>& triple_sav) {
-        #pragma omp parallel for num_threads(Global::num_engines)
-        for (int tid = 0; tid < Global::num_engines; tid++)
-            std::sort(triple_sav[tid].begin(), triple_sav[tid].end(), triple_sort_by_asv());
-    }
-
-    void aggregate_data(int num_partitions,
-                        std::vector<std::vector<triple_t>>& triple_pso,
-                        std::vector<std::vector<triple_t>>& triple_pos) {
-        // calculate #triples on the kvstore from all servers
+    void aggregate_hyperedges(int num_partitions,
+                        std::vector<std::vector<HyperEdge>>& hyperedges) {
+        // calculate #hyperedges on the kvstore from all servers
         uint64_t total = 0;
-        uint64_t kvs_sz = floor(mem->kvstore_size() / num_partitions - sizeof(uint64_t), sizeof(triple_t));
+        uint64_t kvs_sz = floor(mem->kvstore_size() / num_partitions - sizeof(uint64_t), sizeof(sid_t));
         for (int i = 0; i < num_partitions; i++) {
             uint64_t* pn = reinterpret_cast<uint64_t*>(mem->kvstore() + (kvs_sz + sizeof(uint64_t)) * i);
-            total += *pn;  // the 1st uint64_t of kvs records #triples
+            total += *pn;  // the 1st uint64_t of kvs records #hyperedges
         }
 
         // pre-expand to avoid frequent reallocation (maybe imbalance)
-        for (int i = 0; i < triple_pso.size(); i++) {
-            triple_pso[i].reserve(total / Global::num_engines);
-            triple_pos[i].reserve(total / Global::num_engines);
+        for (int i = 0; i < hyperedges.size(); i++) {
+            hyperedges[i].reserve(total / Global::num_engines);
         }
 
-        // each thread will scan all triples (from all servers) and pickup certain triples.
-        // It ensures that the triples belong to the same vertex will be stored in the same
+        // each thread will scan all hyperedges (from all servers) and pickup certain hyperedges.
+        // It ensures that the hyperedges belong to the same vertex will be stored in the same
         // triple_pso/ops. This will simplify the deduplication and insertion to gstore.
         volatile uint64_t progress = 0;
         #pragma omp parallel for num_threads(Global::num_engines)
@@ -345,28 +397,29 @@ protected:
             int cnt = 0;  // per thread count for print progress
             for (int id = 0; id < num_partitions; id++) {
                 uint64_t* pn = reinterpret_cast<uint64_t*>(mem->kvstore() + (kvs_sz + sizeof(uint64_t)) * id);
-                triple_t* kvs = reinterpret_cast<triple_t*>(pn + 1);
+                sid_t* kvs = reinterpret_cast<sid_t*>(pn + 1);
 
-                // the 1st uint64_t of kvs records #triples
+                // the 1st uint64_t of kvs records #hyperedges
                 uint64_t n = *pn;
-                for (uint64_t i = 0; i < n; i++) {
-                    triple_t triple = kvs[i];
+                int i = 0;
+                while(i < n) {
+                    HyperEdge edge;
+                    edge.edge_type = kvs[i];
+                    int num_ids = kvs[i+1];
 
-                    // out-edges
-                    if (PARTITION(triple.s) == sid)
-                        if ((triple.s % Global::num_engines) == tid)
-                            triple_pso[tid].push_back(triple);
+                    if ((kvs[i+2] % Global::num_engines) == tid){
+                        edge.vertices.resize(num_ids);
+                        std::copy(&kvs[i+2], &kvs[i+2+num_ids], edge.vertices.begin());
+                        hyperedges[tid].push_back(edge);
+                    }
 
-                    // in-edges
-                    if (PARTITION(triple.o) == sid)
-                        if ((triple.o % Global::num_engines) == tid)
-                            triple_pos[tid].push_back(triple);
-
+                    i += (num_ids + 2);
+                    cnt += (num_ids + 2);
                     // print the progress (step = 5%) of aggregation
-                    if (++cnt >= total * 0.05) {
+                    if (cnt >= total * 0.05) {
                         uint64_t now = wukong::atomic::add_and_fetch(&progress, 1);
                         if (now % Global::num_engines == 0)
-                            logstream(LOG_INFO) << "[Loader] triples already aggregrate "
+                            logstream(LOG_INFO) << "[Loader] hyperedge already aggregrate "
                                                 << (now / Global::num_engines) * 5
                                                 << "%" << LOG_endl;
                         cnt = 0;
@@ -376,13 +429,63 @@ protected:
         }
     }
 
-    // Load normal triples from all files, using read_partial_exchange or read_all_files.
-    void load_triples_from_all(std::vector<std::string>& dfiles,
-                               std::vector<std::vector<triple_t>>& triple_pso,
-                               std::vector<std::vector<triple_t>>& triple_pos) {
-        // read_partial_exchange: load partial input files by each server and exchanges triples
+    void aggregate_v2e_triples(int num_partitions,
+                        std::vector<std::vector<V2ETriple>>& v2etriples) {
+        // calculate #hyperedges on the kvstore from all servers
+        uint64_t total = 0;
+        uint64_t kvs_sz = floor(mem->kvstore_size() / num_partitions - sizeof(uint64_t), sizeof(V2ETriple));
+        for (int i = 0; i < num_partitions; i++) {
+            uint64_t* pn = reinterpret_cast<uint64_t*>(mem->kvstore() + (kvs_sz + sizeof(uint64_t)) * i);
+            total += *pn;  // the 1st uint64_t of kvs records #hyperedges
+        }
+
+        // pre-expand to avoid frequent reallocation (maybe imbalance)
+        for (int i = 0; i < v2etriples.size(); i++) {
+            v2etriples[i].reserve(total / Global::num_engines);
+        }
+
+        // each thread will scan all hyperedges (from all servers) and pickup certain hyperedges.
+        // It ensures that the hyperedges belong to the same vertex will be stored in the same
+        // triple_pso/ops. This will simplify the deduplication and insertion to gstore.
+        volatile uint64_t progress = 0;
+        #pragma omp parallel for num_threads(Global::num_engines)
+        for (int tid = 0; tid < Global::num_engines; tid++) {
+            int cnt = 0;  // per thread count for print progress
+            for (int id = 0; id < num_partitions; id++) {
+                uint64_t* pn = reinterpret_cast<uint64_t*>(mem->kvstore() + (kvs_sz + sizeof(uint64_t)) * id);
+                V2ETriple* kvs = reinterpret_cast<V2ETriple*>(pn + 1);
+
+                // the 1st uint64_t of kvs records #triples
+                uint64_t n = *pn;
+                for (uint64_t i = 0; i < n; i++) {
+                    V2ETriple triple = kvs[i];
+
+                    if((triple.vid % Global::num_engines) == sid) {
+                        v2etriples[tid].push_back(triple);
+                    }
+
+                    // print the progress (step = 5%) of aggregation
+                    if (++cnt >= total * 0.05) {
+                        uint64_t now = wukong::atomic::add_and_fetch(&progress, 1);
+                        if (now % Global::num_engines == 0)
+                            logstream(LOG_INFO) << "[Loader] V2ETriple already aggregrate "
+                                                << (now / Global::num_engines) * 5
+                                                << "%" << LOG_endl;
+                        cnt = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    // Load normal hyperedges from all files, using read_partial_exchange or read_all_files.
+    void load_hyperedges_from_all(std::vector<std::string>& dfiles,
+                               std::map<sid_t, HyperEdgeModel>& edge_models,
+                               std::vector<std::vector<HyperEdge>>& edges,
+                               std::vector<std::vector<V2ETriple>>& v2etriples) {
+        // read_partial_exchange: load partial input files by each server and exchanges hyperedges
         //            according to graph partitioning
-        // read_all_files: load all files by each server and select triples
+        // read_all_files: load all files by each server and select hyperedges
         //                          according to graph partitioning
         //
         // Trade-off: read_all_files avoids network traffic and memory,
@@ -393,114 +496,62 @@ protected:
         uint64_t start = timer::get_usec();
         int num_partitons = 0;
         if (Global::use_rdma)
-            num_partitons = read_partial_exchange(dfiles);
+            num_partitons = read_partial_exchange(edge_models, dfiles);
         else
-            num_partitons = read_all_files(dfiles);
+            num_partitons = read_all_files(edge_models, dfiles);
         uint64_t end = timer::get_usec();
         logstream(LOG_INFO) << "[Loader] #" << sid << ": " << (end - start) / 1000 << " ms "
                             << "for loading data files" << LOG_endl;
 
-        // all triples are partitioned and temporarily stored in the kvstore on each server.
-        // the kvstore is split into num_partitions partitions, each contains #triples and triples
+        // all hyperedges are partitioned and temporarily stored in the kvstore on each server.
+        // the kvstore is split into num_partitions partitions, each contains #hyperedges and hyperedges
         //
-        // Wukong aggregates all triples before finally inserting them to gstore (kvstore)
+        // Wukong aggregates all hyperedges before finally inserting them to gstore (kvstore)
         start = timer::get_usec();
-        aggregate_data(num_partitons, triple_pso, triple_pos);
+        aggregate_hyperedges(num_partitons, edges);
         end = timer::get_usec();
         logstream(LOG_INFO) << "[Loader] #" << sid << ": " << (end - start) / 1000 << " ms "
-                            << "for aggregrating triples" << LOG_endl;
-    }
-
-    // Load preprocessed data from selected files.
-    void load_triples_from_selected(const std::string& src, std::vector<std::string>& fnames,
-                                    std::vector<std::vector<triple_t>>& triple_pso,
-                                    std::vector<std::vector<triple_t>>& triple_pos) {
-        uint64_t start = timer::get_usec();
-
-        size_t triple_cnt = get_triple_cnt(src);
-        for (int i = 0; i < triple_pso.size(); i++) {
-            triple_pso[i].reserve(triple_cnt / Global::num_servers / Global::num_engines);
-            triple_pos[i].reserve(triple_cnt / Global::num_servers / Global::num_engines);
-        }
-
-        auto load_one_file = [&](bool by_s, std::istream& file,
-                                 std::vector<triple_t>& triple_pso, std::vector<triple_t>& triple_pos) {
-            triple_t triple;
-        #ifdef TRDF_MODE
-            while (file >> triple.s >> triple.p >> triple.o >> triple.ts >> triple.te) {
-        #else
-            while (file >> triple.s >> triple.p >> triple.o) {
-        #endif
-                if (by_s)    // out-edges
-                    triple_pso.push_back(triple);
-                else        // in-edges
-                    triple_pos.push_back(triple);
-            }
-        };
-
-        int num_files = fnames.size();
-        #pragma omp parallel for num_threads(Global::num_engines)
-        for (int i = 0; i < num_files; i++) {
-            int localtid = omp_get_thread_num();
-
-            size_t spos = fnames[i].find_last_of('_') + 1;
-            size_t len = fnames[i].find('.') - spos;
-            int pid = stoi(fnames[i].substr(spos, len));
-            if (PARTITION(pid) == sid) {
-                std::istream* file = init_istream(fnames[i]);
-                bool by_s = (fnames[i].find("spo") != std::string::npos);
-                load_one_file(by_s, *file, triple_pso[localtid], triple_pos[localtid]);
-                close_istream(file);
-            }
-        }
-        uint64_t end = timer::get_usec();
+                            << "for aggregrating hyperedges" << LOG_endl;
+    
+        // Wukong generate a globally unique id for each hyperedge
+        // now we need to send all (vid, heid, index) triples to each machine
+        start = timer::get_usec();
+        num_partitons = exchange_v2e_triples(edges);
+        end = timer::get_usec();
         logstream(LOG_INFO) << "[Loader] #" << sid << ": " << (end - start) / 1000 << " ms "
-                            << "for loading triples" << LOG_endl;
+                            << "for exchange v2e triples" << LOG_endl;
+
+        // all v2e triples are partitioned and temporarily stored in the kvstore on each server.
+        // the kvstore is split into num_partitions partitions, each contains #cnt and v2e triples
+        //
+        // Wukong aggregates all v2e triples before finally inserting them to gstore (kvstore)
+        start = timer::get_usec();
+        aggregate_v2e_triples(num_partitons, v2etriples);
+        end = timer::get_usec();
+        logstream(LOG_INFO) << "[Loader] #" << sid << ": " << (end - start) / 1000 << " ms "
+                            << "for aggregrating v2e triples" << LOG_endl;
     }
 
-    void sort_normal_triples(std::vector<std::vector<triple_t>>& triple_pso,
-                             std::vector<std::vector<triple_t>>& triple_pos) {
+    void sort_hyperedges(std::vector<std::vector<HyperEdge>>& edges) {
         #pragma omp parallel for num_threads(Global::num_engines)
         for (int tid = 0; tid < Global::num_engines; tid++) {
-#ifdef VERSATILE
-            std::sort(triple_pso[tid].begin(), triple_pso[tid].end(), triple_sort_by_spo());
-            std::sort(triple_pos[tid].begin(), triple_pos[tid].end(), triple_sort_by_ops());
-#else
-            std::sort(triple_pso[tid].begin(), triple_pso[tid].end(), triple_sort_by_pso());
-            std::sort(triple_pos[tid].begin(), triple_pos[tid].end(), triple_sort_by_pos());
-#endif
-            dedup_triples(triple_pos[tid]);
-            dedup_triples(triple_pso[tid]);
+            std::sort(edges[tid].begin(), edges[tid].end(), hyperedge_sort());
 
-            triple_pos[tid].shrink_to_fit();
-            triple_pso[tid].shrink_to_fit();
+            dedup_data<HyperEdge>(edges[tid]);
+
+            edges[tid].shrink_to_fit();
         }
     }
 
-    bool is_preprocessed(const std::string& src) {
-        auto info_file = list_files(src, "metadata");
-        if (info_file.size() == 1) {
-            std::istream* file = init_istream(src + "/metadata");
-            int num = 0;
-            if ((*file) >> num) {
-                // Preprocessed data can be re-hashed into #num_servers partitions if num is times of num_servers.
-                if (num >= Global::num_servers && num % Global::num_servers == 0)
-                    return true;
-                // Partitions is not times of num_servers(e.g. partitions = 16, num_servers = 3), report error.
-                logstream(LOG_ERROR) << "Partitions of preprocessed data should be times of num_servers. Please re-preprocess data or use raw data instead." << LOG_endl;
-                exit(-1);
-            }
-            close_istream(file);
-        }
-        return false;
-    }
+    void sort_v2e_triples(std::vector<std::vector<V2ETriple>>& v2etriples) {
+        #pragma omp parallel for num_threads(Global::num_engines)
+        for (int tid = 0; tid < Global::num_engines; tid++) {
+            std::sort(v2etriples[tid].begin(), v2etriples[tid].end(), v2etriple_sort());
 
-    size_t get_triple_cnt(const std::string& src) {
-        std::istream* file = init_istream(src + "/metadata");
-        size_t num, triples;
-        ASSERT(*file >> num >> triples);
-        close_istream(file);
-        return triples;
+            dedup_data<V2ETriple>(v2etriples[tid]);
+
+            v2etriples[tid].shrink_to_fit();
+        }
     }
 
 public:
@@ -514,53 +565,31 @@ public:
     virtual std::vector<std::string> list_files(const std::string& src, std::string prefix) = 0;
 
     void load(const std::string& src,
-              std::vector<std::vector<triple_t>>& triple_pso,
-              std::vector<std::vector<triple_t>>& triple_pos,
-              std::vector<std::vector<triple_attr_t>>& triple_sav) {
+              std::map<sid_t, HyperEdgeModel>& edge_models,
+              std::vector<std::vector<HyperEdge>>& edges,
+              std::vector<std::vector<V2ETriple>>& v2etriples) {
         uint64_t start, end;
 
-        num_triples.resize(Global::num_servers);
-        triple_pso.resize(Global::num_engines);
-        triple_pos.resize(Global::num_engines);
-        triple_sav.resize(Global::num_engines);
+        num_datas.resize(Global::num_servers);
+        edges.resize(Global::num_engines);
+        v2etriples.resize(Global::num_engines);
 
         // ID-format data files
-        std::vector<std::string> dfiles(list_files(src, "id_"));
-        // ID-format attribute files
-        std::vector<std::string> afiles(list_files(src, "attr_"));
+        std::vector<std::string> dfiles(list_files(src, "hyper_id_"));
 
         if (dfiles.size() == 0) {
             logstream(LOG_WARNING) << "[Loader] no data files found in directory (" << src
                                    << ") at server " << sid << LOG_endl;
         } else {
-            logstream(LOG_INFO) << "[Loader] " << dfiles.size() << " files and " << afiles.size()
-                                << " attributed files found in directory (" << src
-                                << ") at server " << sid << LOG_endl;
+            logstream(LOG_INFO) << "[Loader] " << dfiles.size() << " files found in directory (" 
+                                << src << ") at server " << sid << LOG_endl;
         }
 
-        // load_triples_from_all: load triples from all the input files
-        // load_triples_from_selected: load triples from selected input files which is preprocessed
-        //
-        // Trade-off: load_triples_from_selected is faster than load_triples_from_all,
-        //            but it requires preprocessing and specific conditions
-        //
-        // Wukong adopts load_normal_from_selected for well-preprocessed data which meets is_preprocessed()
-        //        and adopts load_normal_from_all for other input data.
-        if (is_preprocessed(src))
-            load_triples_from_selected(src, dfiles, triple_pso, triple_pos);
-        else
-            load_triples_from_all(dfiles, triple_pso, triple_pos);
+        load_hyperedges_from_all(dfiles, edge_models, edges, v2etriples);
 
-        // Wukong sorts and dedups all triples before finally inserting them to gstore (kvstore)
-        sort_normal_triples(triple_pso, triple_pos);
-
-        // load attribute files
-        start = timer::get_usec();
-        load_attr_from_allfiles(afiles, triple_sav);
-        sort_attr(triple_sav);
-        end = timer::get_usec();
-        logstream(LOG_INFO) << "[Loader] #" << sid << ": " << (end - start) / 1000 << " ms "
-                            << "for loading attribute files" << LOG_endl;
+        // Wukong sorts and dedups all hyperedges before finally inserting them to gstore (kvstore)
+        sort_hyperedges(edges);
+        sort_v2e_triples(v2etriples);
     }
 };
 
