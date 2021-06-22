@@ -449,7 +449,7 @@ public:
         : sid(sid), mem(mem), str_server(str_server) {
     }
 
-    void load(std::string dname) {
+    virtual void load(std::string dname) {
         uint64_t start, end;
 
         std::shared_ptr<BaseLoader> loader;

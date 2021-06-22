@@ -63,9 +63,9 @@ using HEStore = KVStore<hekey_t, iptr_t, sid_t>;
  */
 class HyperGraph : public StaticRDFGraph {
 protected:
-    int sid;
-    Mem* mem;
-    StringServer* str_server;
+    // int sid;
+    // Mem* mem;
+    // StringServer* str_server;
 
     // all hyperedge types
     std::vector<HyperEdgeModel> edge_types;
@@ -83,8 +83,8 @@ protected:
     // TODO vtype-index (temp variable)
     // TODO etype-index (temp variable)
 
-    virtual void init_gstore(std::vector<std::vector<HyperEdge>>& hyperedges,
-                             std::vector<std::vector<V2ETriple>>& v2etriples) = 0;
+    // virtual void init_gstore(std::vector<std::vector<HyperEdge>>& hyperedges,
+    //                          std::vector<std::vector<V2ETriple>>& v2etriples) = 0;
 
 public:
 
@@ -93,8 +93,8 @@ public:
         // TODO: init v2estore and hestore
     }
 
-    void load(std::string dname) {
-        StaticRDFGraph::load(dname);
+    void load(std::string dname) override {
+        //StaticRDFGraph::load(dname);
 
         uint64_t start, end;
 
@@ -135,7 +135,7 @@ public:
         start = timer::get_usec();
         loader->load(dname, edge_models, hyperedges, v2etriples);
         end = timer::get_usec();
-        logstream(LOG_INFO) << "[HyperGraphLoader] #" << sid << ": " << (end - start) / 1000 << "ms "
+        logstream(LOG_INFO) << "[HyperLoader] #" << sid << ": " << (end - start) / 1000 << "ms "
                             << "for loading hyperedges from disk to memory." << LOG_endl;
 
         // initiate gstore (kvstore) after loading and exchanging triples (memory reused)

@@ -41,10 +41,16 @@ public:
 struct V2ETriple {
     heid_t eid;
     sid_t vid;
+    sid_t edge_type;
     int index;
 
     bool operator==(const V2ETriple& triple) const {
-        // TODO
+        if ((eid == triple.eid) 
+            && (vid == triple.vid) 
+            && (edge_type == triple.edge_type)
+            && (index == triple.index)) {
+            return true;
+        }
         return false;
     }
 };
@@ -62,22 +68,44 @@ public:
     }
 
     bool operator==(const HyperEdge& edge) const {
-        // TODO
+        if ((id == edge.id) 
+            && (edge_type == edge.edge_type) 
+            && (vertices.size() == edge.vertices.size())) {
+            for(int i = 0; i < vertices.size(); i++) {
+                if(vertices[i] != edge.vertices[i]) return false;
+            }
+            return true;
+        }
         return false;
     }
 };
 
 struct v2etriple_sort {
     inline bool operator()(const V2ETriple &t1, const V2ETriple &t2) {
-        // TODO
+        if (t1.vid < t2.vid)
+            return true;
+
+        if (t1.vid == t2.vid && t1.edge_type < t2.edge_type)
+            return true;
+        
+        if (t1.vid == t2.vid && 
+            t1.edge_type == t2.edge_type && 
+            t1.index < t2.index)
+            return true;
+
+        if (t1.vid == t2.vid && 
+            t1.edge_type == t2.edge_type && 
+            t1.index == t2.index &&
+            t1.eid < t2.eid)
+            return true;
+
         return false;
     }
 };
 
 struct hyperedge_sort {
     inline bool operator()(const HyperEdge &e1, const HyperEdge &e2) {
-        // TODO
-        return false;
+        return e1.id < e2.id;
     }
 };
 

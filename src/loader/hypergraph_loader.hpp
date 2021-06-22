@@ -93,6 +93,18 @@ protected:
         data.resize(n);
     }
 
+    template<class DataType, class SortFunc>
+    void sort_data(std::vector<std::vector<DataType>>& data) {
+        #pragma omp parallel for num_threads(Global::num_engines)
+        for (int tid = 0; tid < Global::num_engines; tid++) {
+            std::sort(data[tid].begin(), data[tid].end(), SortFunc());
+
+            dedup_data<DataType>(data[tid]);
+
+            data[tid].shrink_to_fit();
+        }
+    }
+
     template<class DataType>
     void flush_data(int tid, int dst_sid) {
         uint64_t buf_sz = floor(mem->buffer_size() / Global::num_servers - sizeof(uint64_t), sizeof(DataType));
@@ -285,6 +297,7 @@ protected:
                     V2ETriple triple;
                     triple.eid = edges[i][j].id;
                     triple.vid = edges[i][j].vertices[k];
+                    triple.edge_type = edges[i][j].edge_type;
                     // FIXME: should call HyperEdgeModel.get_index(int pos)
                     triple.index = k;
                     send_v2e(localtid, dst_sid, triple);
@@ -419,7 +432,7 @@ protected:
                     if (cnt >= total * 0.05) {
                         uint64_t now = wukong::atomic::add_and_fetch(&progress, 1);
                         if (now % Global::num_engines == 0)
-                            logstream(LOG_INFO) << "[Loader] hyperedge already aggregrate "
+                            logstream(LOG_INFO) << "[HyperLoader] hyperedge already aggregrate "
                                                 << (now / Global::num_engines) * 5
                                                 << "%" << LOG_endl;
                         cnt = 0;
@@ -460,7 +473,7 @@ protected:
                 for (uint64_t i = 0; i < n; i++) {
                     V2ETriple triple = kvs[i];
 
-                    if((triple.vid % Global::num_engines) == sid) {
+                    if((triple.vid % Global::num_engines) == tid) {
                         v2etriples[tid].push_back(triple);
                     }
 
@@ -468,7 +481,7 @@ protected:
                     if (++cnt >= total * 0.05) {
                         uint64_t now = wukong::atomic::add_and_fetch(&progress, 1);
                         if (now % Global::num_engines == 0)
-                            logstream(LOG_INFO) << "[Loader] V2ETriple already aggregrate "
+                            logstream(LOG_INFO) << "[HyperLoader] V2ETriple already aggregrate "
                                                 << (now / Global::num_engines) * 5
                                                 << "%" << LOG_endl;
                         cnt = 0;
@@ -500,7 +513,7 @@ protected:
         else
             num_partitons = read_all_files(edge_models, dfiles);
         uint64_t end = timer::get_usec();
-        logstream(LOG_INFO) << "[Loader] #" << sid << ": " << (end - start) / 1000 << " ms "
+        logstream(LOG_INFO) << "[HyperLoader] #" << sid << ": " << (end - start) / 1000 << " ms "
                             << "for loading data files" << LOG_endl;
 
         // all hyperedges are partitioned and temporarily stored in the kvstore on each server.
@@ -510,15 +523,20 @@ protected:
         start = timer::get_usec();
         aggregate_hyperedges(num_partitons, edges);
         end = timer::get_usec();
-        logstream(LOG_INFO) << "[Loader] #" << sid << ": " << (end - start) / 1000 << " ms "
+        logstream(LOG_INFO) << "[HyperLoader] #" << sid << ": " << (end - start) / 1000 << " ms "
                             << "for aggregrating hyperedges" << LOG_endl;
+
+        // refresh num_datas
+        for(int i = 0; i < num_datas.size(); i++) {
+            num_datas[i] = 0;
+        }
     
         // Wukong generate a globally unique id for each hyperedge
         // now we need to send all (vid, heid, index) triples to each machine
         start = timer::get_usec();
         num_partitons = exchange_v2e_triples(edges);
         end = timer::get_usec();
-        logstream(LOG_INFO) << "[Loader] #" << sid << ": " << (end - start) / 1000 << " ms "
+        logstream(LOG_INFO) << "[HyperLoader] #" << sid << ": " << (end - start) / 1000 << " ms "
                             << "for exchange v2e triples" << LOG_endl;
 
         // all v2e triples are partitioned and temporarily stored in the kvstore on each server.
@@ -528,30 +546,8 @@ protected:
         start = timer::get_usec();
         aggregate_v2e_triples(num_partitons, v2etriples);
         end = timer::get_usec();
-        logstream(LOG_INFO) << "[Loader] #" << sid << ": " << (end - start) / 1000 << " ms "
+        logstream(LOG_INFO) << "[HyperLoader] #" << sid << ": " << (end - start) / 1000 << " ms "
                             << "for aggregrating v2e triples" << LOG_endl;
-    }
-
-    void sort_hyperedges(std::vector<std::vector<HyperEdge>>& edges) {
-        #pragma omp parallel for num_threads(Global::num_engines)
-        for (int tid = 0; tid < Global::num_engines; tid++) {
-            std::sort(edges[tid].begin(), edges[tid].end(), hyperedge_sort());
-
-            dedup_data<HyperEdge>(edges[tid]);
-
-            edges[tid].shrink_to_fit();
-        }
-    }
-
-    void sort_v2e_triples(std::vector<std::vector<V2ETriple>>& v2etriples) {
-        #pragma omp parallel for num_threads(Global::num_engines)
-        for (int tid = 0; tid < Global::num_engines; tid++) {
-            std::sort(v2etriples[tid].begin(), v2etriples[tid].end(), v2etriple_sort());
-
-            dedup_data<V2ETriple>(v2etriples[tid]);
-
-            v2etriples[tid].shrink_to_fit();
-        }
     }
 
 public:
@@ -570,7 +566,7 @@ public:
               std::vector<std::vector<V2ETriple>>& v2etriples) {
         uint64_t start, end;
 
-        num_datas.resize(Global::num_servers);
+        num_datas.resize(Global::num_servers, 0);
         edges.resize(Global::num_engines);
         v2etriples.resize(Global::num_engines);
 
@@ -578,18 +574,23 @@ public:
         std::vector<std::string> dfiles(list_files(src, "hyper_id_"));
 
         if (dfiles.size() == 0) {
-            logstream(LOG_WARNING) << "[Loader] no data files found in directory (" << src
+            logstream(LOG_WARNING) << "[HyperLoader] no data files found in directory (" << src
                                    << ") at server " << sid << LOG_endl;
         } else {
-            logstream(LOG_INFO) << "[Loader] " << dfiles.size() << " files found in directory (" 
+            logstream(LOG_INFO) << "[HyperLoader] " << dfiles.size() << " files found in directory (" 
                                 << src << ") at server " << sid << LOG_endl;
         }
 
         load_hyperedges_from_all(dfiles, edge_models, edges, v2etriples);
 
+        for(int i = 0; i < edges.size(); i++) {
+            std::cout << "#" << sid << " Engine [" << i << "]" << std::endl;
+            std::cout << "#" << sid << "edge size:" << edges[i].size() << std::endl;
+            std::cout << "#" << sid << "triple size:" << v2etriples[i].size() << std::endl;
+        }
         // Wukong sorts and dedups all hyperedges before finally inserting them to gstore (kvstore)
-        sort_hyperedges(edges);
-        sort_v2e_triples(v2etriples);
+        sort_data<HyperEdge, hyperedge_sort>(edges);
+        sort_data<V2ETriple, v2etriple_sort>(v2etriples);
     }
 };
 

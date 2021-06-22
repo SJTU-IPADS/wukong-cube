@@ -380,11 +380,11 @@ public:
             }
             global_type2int.swap(type2int);
 
-            logstream(LOG_INFO) << "[Stat] global_tyscount size: " << global_tyscount.size() << LOG_endl;
-            logstream(LOG_INFO) << "[Stat] global_tystat.pstype.size: " << global_tystat.pstype.size() << LOG_endl;
-            logstream(LOG_INFO) << "[Stat] global_tystat.potype.size: " << global_tystat.potype.size() << LOG_endl;
-            logstream(LOG_INFO) << "[Stat] global_tystat.fine_type.size: " << global_tystat.fine_type.size() << LOG_endl;
-            logstream(LOG_INFO) << "[Stat] global_tyscount[0]: " << global_tyscount[0] << LOG_endl;
+            logstream(LOG_INFO) << "[Stats] global_tyscount size: " << global_tyscount.size() << LOG_endl;
+            logstream(LOG_INFO) << "[Stats] global_tystat.pstype.size: " << global_tystat.pstype.size() << LOG_endl;
+            logstream(LOG_INFO) << "[Stats] global_tystat.potype.size: " << global_tystat.potype.size() << LOG_endl;
+            logstream(LOG_INFO) << "[Stats] global_tystat.fine_type.size: " << global_tystat.fine_type.size() << LOG_endl;
+            logstream(LOG_INFO) << "[Stats] global_tyscount[0]: " << global_tyscount[0] << LOG_endl;
         }
 
         send_stat_to_all_machines(tcp_ad);
