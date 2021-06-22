@@ -63,6 +63,8 @@ using HEStore = KVStore<hekey_t, iptr_t, sid_t>;
  */
 class HyperGraph : public DGraph {
 protected:
+    using tbb_hedge_hash_map = tbb::concurrent_hash_map<sid_t, std::vector<heid_t>>;
+
     const int RDF_RATIO = 60;
     const int HE_RATIO = 20;
     const int V2E_RATIO = 20;
@@ -80,8 +82,8 @@ protected:
     // std::vector<uint64_t> he_offsets; 
     // sid_t* he_store;
 
-    // TODO vtype-index (temp variable)
-    // TODO etype-index (temp variable)
+    // hyperedge-index
+    tbb_hedge_hash_map he_map;
 
     void insert_v2etriple(int tid, std::vector<V2ETriple>& v2etriples) {
         uint64_t s = 0;
@@ -127,6 +129,29 @@ protected:
 
             // insert values (vids)
             std::copy(edge.vertices.begin(), edge.vertices.end(), &this->hestore->values[off]);
+        
+            // hyperedge-index
+            tbb_hedge_hash_map::accessor a;
+            he_map.insert(a, edge.edge_type);
+            a->second.push_back(edge.id);
+        }
+    }
+
+    void insert_he_index() {
+        for (auto const& e : he_map) {
+            // alloc entries
+            sid_t edge_type = e.first;
+            uint64_t sz = e.second.size();
+            uint64_t off = this->v2estore->alloc_entries(sz, 0);
+
+            // insert index key
+            uint64_t slot_id = this->v2estore->insert_key(
+                hvkey_t(0, edge_type, 0),
+                iptr_t(sz, off));
+
+            // insert subjects/objects
+            for (auto const& heid : e.second)
+                this->v2estore->values[off++] = heid;
         }
     }
 
@@ -317,6 +342,12 @@ public:
         end = timer::get_usec();
         logstream(LOG_INFO) << "[HyperGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
                             << "for initializing hestore." << LOG_endl;
+
+        start = timer::get_usec();
+        insert_he_index();
+        end = timer::get_usec();
+        logstream(LOG_INFO) << "[HyperGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
+                            << "for inserting index data into v2estore" << LOG_endl;
 
         logstream(LOG_INFO) << "[HyperGraph] #" << sid << ": loading HyperGraph is finished" << LOG_endl;
 
