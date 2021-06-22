@@ -66,6 +66,7 @@ class KVStore {
     friend class GChecker;
     friend class DGraph;
     friend class SegmentRDFGraph;
+    friend class HyperGraph;
 
 public:
     // the number of locks to protect buckets
@@ -172,15 +173,15 @@ protected:
 
             // whether the bucket_ext (indirect-header region) is used
             if (!this->slots[slot_id].key.is_empty()) {
-                slot_id = this->slots[slot_id].key.vid * ASSOCIATIVITY;
+                slot_id = this->slots[slot_id].key * ASSOCIATIVITY;
                 continue;  // continue and jump to next bucket
             }
 
             // allocate and link a new indirect header
-            this->slots[slot_id].key.vid = alloc_ext_buckets(1);
+            this->slots[slot_id].key = alloc_ext_buckets(1);
 
             // move to a new bucket_ext
-            slot_id = this->slots[slot_id].key.vid * ASSOCIATIVITY;
+            slot_id = this->slots[slot_id].key * ASSOCIATIVITY;
             // insert to the first slot
             this->slots[slot_id].key = key;
             this->slots[slot_id].ptr = ptr;
@@ -225,14 +226,14 @@ protected:
 
             // whether the bucket_ext (indirect-header region) is used
             if (!this->slots[slot_id].key.is_empty()) {
-                slot_id = this->slots[slot_id].key.vid * ASSOCIATIVITY;
+                slot_id = this->slots[slot_id].key * ASSOCIATIVITY;
                 continue;  // continue and jump to next bucket
             }
 
             // allocate and link a new indirect header
-            this->slots[slot_id].key.vid = alloc_ext_buckets(1);
+            this->slots[slot_id].key = alloc_ext_buckets(1);
             // move to a new bucket_ext
-            slot_id = this->slots[slot_id].key.vid * ASSOCIATIVITY;
+            slot_id = this->slots[slot_id].key * ASSOCIATIVITY;
             goto done;
         }
     done:
@@ -296,7 +297,7 @@ protected:
                         return slot_t();
 
                     // move to next bucket
-                    bucket_id = this->slots[slot_id].key.vid;
+                    bucket_id = this->slots[slot_id].key.get_bucket_index();
                     // break for-loop
                     break;
                 }
@@ -349,7 +350,7 @@ protected:
                         return slot_t();  // not found
 
                     // move to next bucket
-                    bucket_id = slots[i].key.vid;
+                    bucket_id = slots[i].key.get_bucket_index();
                     // break for-loop
                     break;
                 }
@@ -455,9 +456,9 @@ public:
      * @param sid server id
      * @param mem main memory
      */
-    KVStore(int sid, Mem* mem) : sid(sid), mem(mem) {
-        uint64_t header_region = mem->kvstore_size() * HD_RATIO / 100;
-        uint64_t entry_region = mem->kvstore_size() - header_region;
+    KVStore(int sid, Mem* mem, char* kv_addr, uint64_t kv_size) : sid(sid), mem(mem) {
+        uint64_t header_region = kv_size * HD_RATIO / 100;
+        uint64_t entry_region = kv_size - header_region;
 
         // header region
         this->num_slots = header_region / sizeof(slot_t);
@@ -466,8 +467,8 @@ public:
         // entry region
         this->num_entries = entry_region / sizeof(ValueType);
 
-        this->slots = reinterpret_cast<slot_t*>(mem->kvstore());
-        this->values = reinterpret_cast<ValueType*>(mem->kvstore() + this->num_slots * sizeof(slot_t));
+        this->slots = reinterpret_cast<slot_t*>(kv_addr);
+        this->values = reinterpret_cast<ValueType*>(kv_addr + this->num_slots * sizeof(slot_t));
 
         pthread_spin_init(&this->bucket_ext_lock, 0);
         for (int i = 0; i < NUM_LOCKS; i++) {
@@ -476,7 +477,7 @@ public:
 
         // print kvstore usage
         logstream(LOG_INFO) << "[KV] kvstore = ";
-        logstream(LOG_INFO) << mem->kvstore_size() << " bytes " << LOG_endl;
+        logstream(LOG_INFO) << kv_size << " bytes " << LOG_endl;
         logstream(LOG_INFO) << "  header region: " << this->num_slots << " slots"
                             << " (main = " << this->num_buckets
                             << ", indirect = " << this->num_buckets_ext << ")" << LOG_endl;
@@ -548,7 +549,7 @@ public:
             }
             // whether the bucket_ext (indirect-header region) is used
             if (!this->slots[slot_id].key.is_empty()) {
-                slot_id = this->slots[slot_id].key.vid * ASSOCIATIVITY;
+                slot_id = this->slots[slot_id].key * ASSOCIATIVITY;
                 continue;  // continue and jump to next bucket
             }
             pthread_spin_unlock(&bucket_locks[lock_id]);

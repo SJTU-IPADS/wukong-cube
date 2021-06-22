@@ -585,8 +585,8 @@ public:
 
         for(int i = 0; i < edges.size(); i++) {
             std::cout << "#" << sid << " Engine [" << i << "]" << std::endl;
-            std::cout << "#" << sid << "edge size:" << edges[i].size() << std::endl;
-            std::cout << "#" << sid << "triple size:" << v2etriples[i].size() << std::endl;
+            std::cout << "#" << sid << " edge size:" << edges[i].size() << std::endl;
+            std::cout << "#" << sid << " v2etriple size:" << v2etriples[i].size() << std::endl;
         }
         // Wukong sorts and dedups all hyperedges before finally inserting them to gstore (kvstore)
         sort_data<HyperEdge, hyperedge_sort>(edges);

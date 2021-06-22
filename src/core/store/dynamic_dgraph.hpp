@@ -46,7 +46,8 @@ protected:
 public:
     DynamicRDFGraph(int sid, Mem* mem, StringServer* str_server)
         : DGraph(sid, mem, str_server) {
-        this->gstore = std::make_shared<DynamicKVStore<ikey_t, iptr_t, edge_t>>(sid, mem);
+        this->gstore = std::make_shared<DynamicKVStore<ikey_t, iptr_t, edge_t>>(
+            sid, mem, mem->kvstore(), mem->kvstore_size());
         // this->dynamic_loader = new DynamicLoader(sid, str_server, static_cast<DynamicKVStore *>(gstore));
     }
 

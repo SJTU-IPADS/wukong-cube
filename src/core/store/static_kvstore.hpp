@@ -68,7 +68,8 @@ protected:
     uint64_t get_value_sz(const slot_t& slot) override { return slot.ptr.size * sizeof(ValueType); }
 
 public:
-    StaticKVStore(int sid, Mem* mem) : KVStore<KeyType, PtrType, ValueType>(sid, mem) {
+    StaticKVStore(int sid, Mem* mem, char* kv_addr, uint64_t kv_size) 
+        : KVStore<KeyType, PtrType, ValueType>(sid, mem, kv_addr, kv_size) {
         pthread_spin_init(&entry_lock, 0);
     }
 

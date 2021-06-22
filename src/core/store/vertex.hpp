@@ -74,6 +74,19 @@ struct ikey_t {
         assert((vid == v) && (dir == d) && (pid == p));  // no key truncate
     }
 
+    ikey_t& operator=(uint64_t index) {
+        vid = index;
+        return *this;
+    }
+
+    uint64_t operator*(uint64_t op_num) {
+        return vid * op_num;
+    }
+
+    uint64_t get_bucket_index() {
+        return this->vid;
+    }
+
 #ifdef USE_GPU
     __host__ __device__
 #endif

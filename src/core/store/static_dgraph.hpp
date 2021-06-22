@@ -37,7 +37,8 @@ class StaticRDFGraph : public DGraph {
 public:
     StaticRDFGraph(int sid, Mem* mem, StringServer* str_server)
         : DGraph(sid, mem, str_server) {
-        this->gstore = std::make_shared<StaticKVStore<ikey_t, iptr_t, edge_t>>(sid, mem);
+        this->gstore = std::make_shared<StaticKVStore<ikey_t, iptr_t, edge_t>>(
+            sid, mem, mem->kvstore(), mem->kvstore_size());
     }
 
     ~StaticRDFGraph() {}

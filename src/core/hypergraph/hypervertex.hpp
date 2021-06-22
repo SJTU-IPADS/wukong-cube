@@ -35,7 +35,7 @@ namespace wukong {
 // (Specfic for normal edge, IN:0/OUT:1)
 #define NBITS_IDX   3 
 // equal to the size of vertex/edge type
-#define NBITS_TYPE  13 
+#define NBITS_ETYPE  13 
 // 0: index vertex, ID: normal vertex/(hyperedge)
 #define NBITS_ID    48
 
@@ -50,13 +50,26 @@ enum { EDGE_TYPE = 0,
  */
 struct hvkey_t {
     uint64_t idx  : NBITS_IDX;  // index
-    uint64_t type : NBITS_TYPE;   // vertex/edge type
+    uint64_t type : NBITS_ETYPE;   // vertex/edge type
     uint64_t id   : NBITS_ID;     // vertex/edge id
 
     hvkey_t() : id(0), type(0), idx(0) {}
 
     hvkey_t(uint64_t id, uint64_t type, uint64_t idx) : id(id), type(type), idx(idx) {
         assert((this->id == id) && (this->type == type) && (this->idx == idx));  // no key truncate
+    }
+
+    hvkey_t& operator=(uint64_t index) {
+        id = index;
+        return *this;
+    }
+
+    uint64_t operator*(uint64_t op_num) {
+        return id * op_num;
+    }
+
+    uint64_t get_bucket_index() {
+        return this->id;
     }
 
     bool operator==(const hvkey_t& key) const {
@@ -80,7 +93,7 @@ struct hvkey_t {
     uint64_t hash() const {
         uint64_t r = 0;
         r += id;
-        r <<= NBITS_TYPE;
+        r <<= NBITS_ETYPE;
         r += type;
         r <<= NBITS_IDX;
         r += idx;
@@ -96,6 +109,19 @@ struct hekey_t {
     hekey_t() : id(0) {}
 
     hekey_t(heid_t id) : id(id) {}
+
+    hekey_t& operator=(uint64_t index) {
+        id = index;
+        return *this;
+    }
+
+    uint64_t operator*(uint64_t op_num) {
+        return id * op_num;
+    }
+
+    uint64_t get_bucket_index() {
+        return this->id;
+    }
 
     bool operator==(const hekey_t& key) const {
         return (id == key.id);

@@ -235,7 +235,7 @@ protected:
             // whether the bucket_ext (indirect-header region) is used
             if (!this->gstore->slots[slot_id].key.is_empty()) {
                 // continue and jump to next bucket
-                slot_id = this->gstore->slots[slot_id].key.vid * RDFStore::ASSOCIATIVITY;
+                slot_id = this->gstore->slots[slot_id].key * RDFStore::ASSOCIATIVITY;
                 continue;
             }
 
@@ -255,10 +255,10 @@ protected:
                 ext_bucket_id = seg.get_ext_bucket();
             }
             pthread_spin_unlock(&seg_ext_locks[seg_ext_lock_id]);
-            this->gstore->slots[slot_id].key.vid = ext_bucket_id;
+            this->gstore->slots[slot_id].key = ext_bucket_id;
 
             // move to a new bucket_ext
-            slot_id = this->gstore->slots[slot_id].key.vid * RDFStore::ASSOCIATIVITY;
+            slot_id = this->gstore->slots[slot_id].key * RDFStore::ASSOCIATIVITY;
             // insert to the first slot
             this->gstore->slots[slot_id].key = key;
             this->gstore->slots[slot_id].ptr = ptr;
@@ -1103,7 +1103,8 @@ protected:
 public:
     SegmentRDFGraph(int sid, Mem* mem, StringServer* str_server)
         : DGraph(sid, mem, str_server) {
-        this->gstore = std::make_shared<StaticKVStore<ikey_t, iptr_t, edge_t>>(sid, mem);
+        this->gstore = std::make_shared<StaticKVStore<ikey_t, iptr_t, edge_t>>
+            (sid, mem, mem->kvstore(), mem->kvstore_size());
         for (int i = 0; i < RDFStore::NUM_LOCKS; i++) {
             pthread_spin_init(&seg_ext_locks[i], 0);
         }
