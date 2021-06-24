@@ -33,12 +33,14 @@
 
 #include "core/common/global.hpp"
 #include "core/common/type.hpp"
+#include "core/common/hypertype.hpp"
 #include "core/common/coder.hpp"
 #include "core/common/errors.hpp"
 
 #include "core/common/bind.hpp"
 
 #include "core/store/dgraph.hpp"
+#include "core/hypergraph/hypergraph.hpp"
 
 #include "core/sparql/query.hpp"
 
@@ -231,6 +233,201 @@ private:
 
         req.pattern_step++;
         req.local_var = end;
+    }
+
+    void hyper_index_to_unknown(SPARQLQuery &req) {
+        SPARQLQuery::Pattern &pattern = req.get_pattern();
+        SPARQLQuery::Result &res = req.result;
+
+        std::vector<ssid_t> vars = pattern.vars;
+
+        std::vector<sid_t> updated_result_table;
+
+        sid_t predicate = pattern.edge_type;
+        std::vector<std::pair<sid_t*, uint64_t>> hyperedges = 
+            dynamic_cast<HyperGraph*>(graph)->get_edges_by_type(tid, predicate);
+        int sz = hyperedges.size();
+        int start = req.mt_tid % req.mt_factor;
+        int length = sz / req.mt_factor;
+
+        // every thread takes a part of consecutive edges
+        for (uint64_t k = start * length; k < (start + 1) * length; k++)
+            for(int idx = 0; idx < hyperedges[k].second; idx++)
+                updated_result_table.push_back(hyperedges[k].first[idx]);
+
+        // fixup the last participant
+        if (start == req.mt_factor - 1)
+            for (uint64_t k = (start + 1) * length; k < sz; k++)
+                for(int idx = 0; idx < hyperedges[k].second; idx++)
+                    updated_result_table.push_back(hyperedges[k].first[idx]);
+
+        // update result and metadata
+        res.result_table.swap(updated_result_table);
+        res.set_col_num(vars.size());
+        for(int i = 0; i < vars.size(); i++) {
+            res.add_var2col(vars[i], i);
+        }
+        res.update_nrows();
+
+        req.pattern_step++;
+        req.local_var = vars[0];
+    }
+
+    void hyper_const_to_unknown(SPARQLQuery &req) {
+        SPARQLQuery::Pattern &pattern = req.get_pattern();
+        SPARQLQuery::Result &res = req.result;
+    
+        // MUST be the first triple pattern
+        ASSERT_ERROR_CODE(res.get_col_num() == 0,
+                              FIRST_PATTERN_ERROR);
+
+        if(pattern.top_half) {
+            // retrieve hyperedge id
+            int index = pattern.const_index;
+            sid_t start = pattern.vars[index];
+            sid_t predicate = pattern.edge_type;
+
+            uint64_t sz = 0;
+            heid_t* heids = dynamic_cast<HyperGraph*>(graph)->get_edges_by_vertex(
+                    tid, start, predicate, index, sz);
+            std::vector<heid_t> updated_result_table;
+            for (uint64_t k = 0; k < sz; k++)
+                updated_result_table.push_back(heids[k]);
+
+            // update result and metadata
+            res.heid_res_table.load_data(updated_result_table);
+            res.add_var2col(pattern.edge_var, res.heid_res_table.get_col_num(), HEID_t);
+            res.heid_res_table.set_col_num(res.heid_res_table.get_col_num() + 1);
+            res.update_nrows();
+            pattern.top_half = false;
+        } else {
+            // retrieve hyperedge value
+            std::vector<sid_t> updated_result_table;
+            updated_result_table.reserve(res.result_table.size());
+
+            int index = pattern.const_index;
+            sid_t edge_var = pattern.edge_var;
+
+            sid_t *vids = NULL;
+            uint64_t sz = 0;
+            int nrows = res.get_row_num();
+            for (int i = 0; i < nrows; i++) {
+                heid_t cur = res.heid_res_table.get_row_col(
+                        i, res.var2col(edge_var));
+
+                vids = dynamic_cast<HyperGraph*>(graph)->get_edges_by_id(
+                    tid, cur, sz);
+
+                assert(sz == pattern.vars.size()+1);
+
+                // append a new intermediate result (row)
+                res.append_row_to(i, updated_result_table);
+                for (uint64_t k = 0; k < sz; k++) {
+                    if(k == pattern.const_index) continue;
+                    updated_result_table.push_back(vids[k]);
+                }
+            }
+
+            // update result and (attributed) result
+            res.result_table.swap(updated_result_table);
+            res.heid_res_table.clear();
+            
+            // update metadata
+            res.set_col_num(res.get_col_num() + pattern.vars.size());
+            for(int i = 0; i < pattern.vars.size(); i++) {
+                res.add_var2col(pattern.vars[i], res.get_col_num() + i);
+            }
+            res.update_nrows();
+
+            req.pattern_step++;
+            req.local_var = pattern.vars[0];
+        }
+    }
+
+    void hyper_known_to_unknown(SPARQLQuery &req) {
+        SPARQLQuery::Pattern &pattern = req.get_pattern();
+        SPARQLQuery::Result &res = req.result;
+    
+        // MUST be the first triple pattern
+        ASSERT_ERROR_CODE(res.get_col_num() == 0,
+                              FIRST_PATTERN_ERROR);
+
+        if(pattern.top_half) {
+            // retrieve hyperedge id
+            int index = pattern.const_index;
+            ssid_t start = pattern.vars[index];
+            sid_t predicate = pattern.edge_type;
+
+            std::vector<sid_t> updated_result_table;
+            std::vector<heid_t> updated_heid_res_table;
+
+            sid_t cached = BLANK_ID; // simple dedup for consecutive same vertices
+            heid_t *heids = NULL;
+            uint64_t sz = 0;
+            int nrows = res.get_row_num();
+            for (int i = 0; i < nrows; i++) {
+                sid_t cur = res.get_row_col(i, res.var2col(start));
+                if (cur != cached) { // new KNOWN
+                    cached = cur;
+                    heids = dynamic_cast<HyperGraph*>(graph)->get_edges_by_vertex(
+                                tid, cur, predicate, index, sz);
+                }
+
+                for (uint64_t k = 0; k < sz; k++) {
+                    res.append_row_to(i, updated_result_table);
+                    updated_heid_res_table.push_back(heids[k]);
+                }
+            }
+
+            // update result and metadata
+            res.result_table.swap(updated_result_table);
+            res.heid_res_table.load_data(updated_heid_res_table);
+            res.add_var2col(pattern.edge_var, res.heid_res_table.get_col_num(), HEID_t);
+            res.heid_res_table.set_col_num(res.heid_res_table.get_col_num() + 1);
+            res.update_nrows();
+            pattern.top_half = false;
+        } else {
+            // retrieve hyperedge value
+            std::vector<sid_t> updated_result_table;
+            updated_result_table.reserve(res.result_table.size());
+
+            int index = pattern.const_index;
+            sid_t edge_var = pattern.edge_var;
+
+            sid_t *vids = NULL;
+            uint64_t sz = 0;
+            int nrows = res.get_row_num();
+            for (int i = 0; i < nrows; i++) {
+                heid_t cur = res.heid_res_table.get_row_col(
+                        i, res.var2col(edge_var));
+
+                vids = dynamic_cast<HyperGraph*>(graph)->get_edges_by_id(
+                    tid, cur, sz);
+
+                assert(sz == pattern.vars.size());
+
+                // append a new intermediate result (row)
+                res.append_row_to(i, updated_result_table);
+                for (uint64_t k = 0; k < sz; k++) {
+                    if(k == pattern.const_index) continue;
+                    updated_result_table.push_back(vids[k]);
+                }
+            }
+
+            // update result and (attributed) result
+            res.result_table.swap(updated_result_table);
+            res.heid_res_table.clear();
+            
+            // update metadata
+            res.set_col_num(res.get_col_num() + pattern.vars.size());
+            for(int i = 0; i < pattern.vars.size(); i++) {
+                res.add_var2col(pattern.vars[i], res.get_col_num() + i);
+            }
+            res.update_nrows();
+
+            req.pattern_step++;
+            req.local_var = pattern.vars[0];
+        }
     }
 
     /// C P ?X . (C/P: GIVEN, ?X: UNKNOWN)
@@ -929,6 +1126,41 @@ private:
         req.pattern_step = fetch_step;
     }
 
+    void execute_one_hyper_pattern(SPARQLQuery &req) {
+        SPARQLQuery::Pattern &pattern = req.get_pattern();
+
+        std::vector<ssid_t> vars = pattern.vars;
+        ssid_t predicate = pattern.edge_type;
+        int const_index = pattern.const_index;
+
+        if(req.pattern_step == 0 && const_index == -1) {
+            hyper_index_to_unknown(req);
+        }
+
+        std::vector<vstat> vstats;
+        for(ssid_t var : vars) {
+            vstats.push_back(req.result.var_stat(var));
+        }
+
+        // 1. const_to_unknown
+        if(const_index >= 0 && std::find(vstats.begin(), vstats.end(), KNOWN_VAR) == vstats.end()) {
+            hyper_const_to_unknown(req);
+            return;
+        }
+
+        // 2. known_to_unknown
+        if(const_index == -1 && std::find(vstats.begin(), vstats.end(), KNOWN_VAR) != vstats.end()) {
+            hyper_known_to_unknown(req);
+            return;
+        }
+
+        // 3. pruning (const_to_known, known_to_const, known_to_known) 
+        //    should not occur in hyperquery
+        // TODO: find some feasible cases
+
+        ASSERT_ERROR_CODE(false, UNKNOWN_PATTERN);
+    }
+
     bool execute_one_pattern(SPARQLQuery &req) {
         ASSERT(!req.done(SPARQLQuery::SQState::SQ_PATTERN));
 
@@ -936,6 +1168,13 @@ private:
                              << " step=" << req.pattern_step << LOG_endl;
 
         SPARQLQuery::Pattern &pattern = req.get_pattern();
+        
+        // handle hyper-pattern
+        if(pattern.is_hyper) {
+            execute_one_hyper_pattern(req);
+            return true;
+        }
+
         ssid_t start = pattern.subject;
         ssid_t predicate = pattern.predicate;
         dir_t direction = pattern.direction;

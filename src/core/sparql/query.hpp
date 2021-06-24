@@ -37,6 +37,7 @@
 
 #include "core/common/errors.hpp"
 #include "core/common/type.hpp"
+#include "core/common/hypertype.hpp"
 
 #include "core/store/vertex.hpp"
 
@@ -58,7 +59,6 @@ enum vstat { KNOWN_VAR = 0, UNKNOWN_VAR, CONST_VAR }; // variable stat
 
 // Init COL value with NO_RESULT
 #define NO_RESULT  ((1 << NBITS_COL) - 1)
-
 
 // conversion between col and ext
 int col2ext(int col, int t) { return ((t << NBITS_COL) | col); }
@@ -139,25 +139,37 @@ public:
         friend class boost::serialization::access;
 
     public:
+        bool is_hyper;
+
+        // normal pattern
         ssid_t subject;
         ssid_t predicate;
         ssid_t object;
         dir_t direction;
+        char pred_type = (char)SID_t;
+
+        // hyper pattern
+        std::vector<ssid_t> vars;
+        ssid_t edge_var;
+        ssid_t edge_type;
+        int const_index;
+        bool top_half = true;
 
     #ifdef TRDF_MODE
         TimeIntervalPattern time_interval;
     #endif
 
-        char pred_type = (char)SID_t;
-
-        Pattern() { }
+        Pattern() : is_hyper(false) { }
 
         Pattern(ssid_t subject, ssid_t predicate, dir_t direction, ssid_t object):
-            subject(subject), predicate(predicate), object(object), direction(direction) { }
+            is_hyper(false), subject(subject), predicate(predicate), object(object), direction(direction) { }
 
         Pattern(ssid_t subject, ssid_t predicate, ssid_t direction, ssid_t object):
-            subject(subject), predicate(predicate), object(object), direction((dir_t)direction) { }
+            is_hyper(false), subject(subject), predicate(predicate), object(object), direction((dir_t)direction) { }
 
+        Pattern(std::vector<ssid_t> vars, ssid_t edge_type, int const_index):
+            is_hyper(true), vars(vars), edge_type(edge_type), const_index(const_index) { }
+    
         void print_pattern() { }
     };
 
@@ -294,6 +306,66 @@ public:
             : id(_id), descending(_descending) { }
     };
 
+    template <class DataType> 
+    class ResultTable {
+    private:
+        friend class boost::serialization::access;
+        template <typename Archive>
+        void serialize(Archive &ar, const unsigned int version) {
+            ar & col_num;
+            if(col_num > 0) {
+                ar & result_data;
+            }
+        }
+    public:
+        ResultTable() { }
+
+        int col_num;
+        std::vector<DataType> result_data;
+
+        void load_data(std::vector<DataType> &update) {
+            result_data.swap(update);
+        }
+
+        void set_col_num(int n) {
+            col_num = n;
+        }
+
+        int get_col_num() const {
+            return col_num;
+        }
+
+        int get_data_size() const {
+            return result_data.size();
+        }
+
+        DataType get_row_col(int r, int c) {
+            ASSERT(r >= 0 && c >= 0);
+            return result_data[col_num * r + c];
+        }
+
+        void append_row_to(int r, std::vector<DataType> &update) {
+            for (int c = 0; c < col_num; c++)
+                update.push_back(get_row_col(r, c));
+        }
+
+        void dup_rows(std::vector<DataType> &update){
+            result_data.assign(update.begin(), update.end());
+        }
+        
+        void append_result(ResultTable<DataType> result) {
+            col_num = result.col_num;
+            result_data.insert(result_data.end(),
+                               result.result_data.begin(),
+                               result.result_data.end());
+        }
+
+        void clear() {
+            col_num = 0;
+            result_data.clear();
+        }
+    };
+
     class Result {
     private:
         friend class boost::serialization::access;
@@ -363,6 +435,10 @@ public:
         int row_num = 0;  // FIXME: vs. get_row_num()
         int attr_col_num = 0; // FIXME: why not no attr_row_num
         int status_code = SUCCESS;
+
+        ResultTable<heid_t> heid_res_table;
+        ResultTable<float> float_res_table;
+        ResultTable<double> double_res_table;
 
     #ifdef TRDF_MODE
         // time-related metadata
@@ -470,28 +546,85 @@ public:
 
 
         // NORMAL result (i.e., sid)
-        void set_col_num(int n) {
-            col_num = n;
-#ifdef USE_GPU
-            gpu.set_col_num(col_num); // FIXME: should be avoided
-#endif
+        void set_col_num(int n, data_type type = SID_t) {
+            switch (type) {
+            case SID_t:
+                col_num = n;
+            #ifdef USE_GPU
+                gpu.set_col_num(col_num); // FIXME: should be avoided
+            #endif
+                break;
+            case HEID_t:
+                heid_res_table.set_col_num(n);
+                break;
+            case FLOAT_t:
+                float_res_table.set_col_num(n);
+                break;
+            case DOUBLE_t:
+                double_res_table.set_col_num(n);
+                break;
+            }
         }
 
-        int get_col_num() const { return col_num; }
+        int get_col_num(data_type type = SID_t) const { 
+            switch (type) {
+            case SID_t:
+                return col_num;
+            case HEID_t:
+                return heid_res_table.get_col_num();
+            case FLOAT_t:
+                return float_res_table.get_col_num();
+            case DOUBLE_t:
+                return double_res_table.get_col_num();
+            }
+        }
 
         int get_row_num() const {
-            return (col_num == 0) ?
-                   0 : (result_table.size() / col_num);
+            if(col_num == 0 && 
+               heid_res_table.get_col_num() == 0 &&
+               float_res_table.get_col_num() == 0 &&
+               double_res_table.get_col_num() == 0) {
+                return 0;
+            } else if(col_num != 0) {
+                return result_table.size() / col_num;
+            } else if(heid_res_table.get_col_num() != 0) {
+                return heid_res_table.get_data_size() / heid_res_table.get_col_num();
+            } else if(float_res_table.get_col_num() != 0) {
+                return float_res_table.get_data_size() / float_res_table.get_col_num();
+            } else if(double_res_table.get_col_num() != 0) {
+                return double_res_table.get_data_size() / double_res_table.get_col_num();
+            } else { return 0; }
         }
 
         void update_nrows() {
-            row_num = (col_num == 0) ?
-                      0 : (result_table.size() / col_num);
+            if(col_num == 0 && 
+               heid_res_table.get_col_num() == 0 &&
+               float_res_table.get_col_num() == 0 &&
+               double_res_table.get_col_num() == 0) {
+                row_num = 0;
+            } else if(col_num != 0) {
+                row_num = result_table.size() / col_num;
+            } else if(heid_res_table.get_col_num() != 0) {
+                row_num = heid_res_table.get_data_size() / heid_res_table.get_col_num();
+            } else if(float_res_table.get_col_num() != 0) {
+                row_num = float_res_table.get_data_size() / float_res_table.get_col_num();
+            } else if(double_res_table.get_col_num() != 0) {
+                row_num = double_res_table.get_data_size() / double_res_table.get_col_num();
+            }
         }
 
-        sid_t get_row_col(int r, int c) {
+        sid_t get_row_col(int r, int c, data_type type = SID_t) {
             ASSERT(r >= 0 && c >= 0);
-            return result_table[col_num * r + c];
+            switch (type) {
+            case SID_t:
+                return result_table[col_num * r + c];
+            case HEID_t:
+                return heid_res_table.get_row_col(r, c);
+            case FLOAT_t:
+                return float_res_table.get_row_col(r, c);
+            case DOUBLE_t:
+                return double_res_table.get_row_col(r, c);
+            }
         }
 
         void append_row_to(int r, std::vector<sid_t> &update) {
@@ -669,6 +802,8 @@ public:
             // NOTE: all sub-jobs have the same v2c_map, ncols, and attr_ncols
             v2c_map = r.v2c_map;
             col_num = r.col_num;
+            heid_res_table.append_result(r.heid_res_table);
+            double_res_table.append_result(r.double_res_table);
         #ifdef TRDF_MODE
             time_col_num = r.time_col_num;
         #endif
@@ -1151,6 +1286,9 @@ void save(Archive &ar, const wukong::SPARQLQuery::Result &t, unsigned int versio
     if (t.row_num > 0) {
         ar << occupied;
         ar << t.result_table;
+        ar << t.heid_res_table;
+        ar << t.float_res_table;
+        ar << t.double_res_table;
         ar << t.attr_res_table;
     } else {
         ar << empty;
@@ -1179,6 +1317,9 @@ void load(Archive & ar, wukong::SPARQLQuery::Result &t, unsigned int version) {
     ar >> temp;
     if (temp == occupied) {
         ar >> t.result_table;
+        ar >> t.heid_res_table;
+        ar >> t.float_res_table;
+        ar >> t.double_res_table;
         ar >> t.attr_res_table;
     }
 #ifdef USE_GPU

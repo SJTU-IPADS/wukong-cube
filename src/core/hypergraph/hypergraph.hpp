@@ -364,8 +364,24 @@ public:
     inline std::vector<HyperEdgeModel> get_edge_types() const { return this->edge_types; }
     inline std::vector<sid_t> get_vertex_types() const { return this->vertex_types; }
     
-    std::vector<HyperEdge*> get_hyper_edges(int tid, sid_t vid, sid_t edge_type, int index) {
+    std::vector<std::pair<sid_t*, uint64_t>> get_edges_by_type(int tid, sid_t edge_type) {
+        // index vertex should be 0 and always local
+        std::vector<std::pair<sid_t*, int>> result;
+        uint64_t edge_sz;
+        heid_t* hyper_edge_ids = v2estore->get_values(tid, this->sid, hvkey_t(0, edge_type, 0), edge_sz);
+        for(int i = 0; i < edge_sz; i++) {
+            uint64_t sz;
+            sid_t* vids = hestore->get_values(tid, this->sid, hekey_t(hyper_edge_ids[i]), sz);
+            result.push_back(std::make_pair(vids, sz));
+        }
+    }
 
+    heid_t* get_edges_by_vertex(int tid, sid_t vid, sid_t edge_type, int index, uint64_t& sz) {
+        return v2estore->get_values(tid, PARTITION(vid), hvkey_t(vid, edge_type, index), sz);
+    }
+
+    sid_t* get_edges_by_id(int tid, heid_t eid, uint64_t& sz) {
+        return hestore->get_values(tid, PARTITION(eid), hekey_t(eid), sz);
     }
 
     virtual int dynamic_load_data(std::string dname, bool check_dup) {}
