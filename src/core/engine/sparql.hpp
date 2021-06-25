@@ -998,6 +998,10 @@ private:
         if (!Global::use_rdma) return true;
 
         SPARQLQuery::Pattern &pattern = req.get_pattern();
+
+        // TODO: implement fork-and-join execution mode for hyper-pattern
+        if(pattern.is_hyper) return false;
+
         ASSERT_ERROR_CODE(req.result.var_stat(pattern.subject) == KNOWN_VAR, OBJ_ERROR);
         ssid_t start = pattern.subject;
         return ((req.local_var != start) // next hop is not local
@@ -1135,6 +1139,7 @@ private:
 
         if(req.pattern_step == 0 && const_index == -1) {
             hyper_index_to_unknown(req);
+            return;
         }
 
         std::vector<vstat> vstats;

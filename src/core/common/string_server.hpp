@@ -147,6 +147,19 @@ private:
                 file.close();
             }
 
+            if (boost::ends_with(fname, "/hyper_str_index")) {
+                logstream(LOG_INFO) << "loading ID-mapping (HyperEdge) file: " << fname << LOG_endl;
+                std::ifstream file(fname.c_str());
+                std::string str;
+                sid_t id, num, tmp;
+                while (file >> str >> id >> num) {
+                    for(int i = 0; i < num; i++) file >> tmp;
+                    add(str, id);  // add a new ID-STRING (bi-direction) pair
+                }
+                next_index_id = ++id;
+                file.close();
+            }
+
             // load the attribute index from the str_attr_index file
             // it contains by (string, predicate-ID, predicate-type)
             // predicate type: SID_t, INT_t, FLOAT_t, DOUBLE_t
@@ -197,6 +210,19 @@ private:
                     next_index_id = ++id;
                 else
                     next_normal_id = ++id;
+                file.close();
+            }
+
+            if (boost::ends_with(fname, "/hyper_str_index")) {
+                logstream(LOG_INFO) << "loading ID-mapping (HyperEdge) file: " << fname << LOG_endl;
+                std::ifstream file(fname.c_str());
+                std::string str;
+                sid_t id, num, tmp;
+                while (file >> str >> id >> num) {
+                    for(int i = 0; i < num; i++) file >> tmp;
+                    add(str, id);  // add a new ID-STRING (bi-direction) pair
+                }
+                next_index_id = ++id;
                 file.close();
             }
 

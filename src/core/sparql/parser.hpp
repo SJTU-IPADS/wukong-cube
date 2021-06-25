@@ -119,9 +119,18 @@ public:
     #endif
         /// Direction
         dir_t direction = OUT;
+
+        bool is_hyper;
+        std::vector<Element> vars;
+        ssid_t edge_var;
+
         /// Constructor
         Pattern(Element subject, Element predicate, Element object)
-            : subject(subject), predicate(predicate), object(object) { }
+            : subject(subject), predicate(predicate), object(object), is_hyper(false) { }
+        
+        Pattern(std::vector<Element> vars, Element predicate, ssid_t edge_var)
+            : vars(vars), predicate(predicate), edge_var(edge_var), is_hyper(true) { }
+        
         /// Destructor
         ~Pattern() { }
     };
@@ -876,6 +885,24 @@ private:
         }
     #endif
 
+        SPARQLLexer::Token token = lexer.getNext();
+        if (token == SPARQLLexer::At) {
+            std::vector<Element> vars;
+            while(true) {
+                Element var = parsePatternElement(group, localVars);
+                vars.push_back(var);
+                token = lexer.getNext();
+                if(token == SPARQLLexer::At) break;
+                else lexer.unget(token);
+            }
+            Element predicate = parsePatternElement(group, localVars);
+            ssid_t edge_var = -(++namedVariableCount);
+            group.patterns.push_back(Pattern(vars, predicate, edge_var));
+            return;
+        } else {
+            lexer.unget(token);
+        }
+
         // Parse the first pattern
         Element subject = parsePatternElement(group, localVars);
         Element predicate = parsePatternElement(group, localVars);
@@ -965,7 +992,8 @@ private:
                        || (token == SPARQLLexer::Identifier) || (token == SPARQLLexer::String)
                        || (token == SPARQLLexer::Underscore) || (token == SPARQLLexer::Colon)
                        || (token == SPARQLLexer::LBracket) || (token == SPARQLLexer::Anon)
-                       || (token == SPARQLLexer::Percent) || (token == SPARQLLexer::TIME_INTERVAL)) {
+                       || (token == SPARQLLexer::Percent) || (token == SPARQLLexer::TIME_INTERVAL)
+                       || (token == SPARQLLexer::At)) {
                 // Distinguish filter conditions
                 if ((token == SPARQLLexer::Identifier) && (lexer.isKeyword("filter"))) {
                     std::map<std::string, unsigned> localVars;
@@ -1398,10 +1426,29 @@ private:
         }
     }
 
+    void transfer_hyper_pattern(const SPARQLParser::Pattern& hyper_pattern, 
+                           SPARQLQuery::PatternGroup &dst) {
+        std::vector<ssid_t> vars;
+        int const_var = -1;
+        for(auto& element : hyper_pattern.vars) {
+            ssid_t var = transfer_element(element);
+            // TODO: check const_var no more than 1
+            if(var > 0) const_var = vars.size();
+            vars.push_back(var);
+        }
+        ssid_t predicate = transfer_element(hyper_pattern.predicate);
+        SPARQLQuery::Pattern pattern(vars, predicate, const_var, hyper_pattern.edge_var);
+        dst.patterns.push_back(pattern);
+    }
+
     /// SPARQLParser::PatternGroup to SPARQLQuery::PatternGroup
     void transfer_pg(SPARQLParser::PatternGroup &src, SPARQLQuery::PatternGroup &dst) {
         // Patterns
         for (auto const &p : src.patterns) {
+            if(p.is_hyper) {
+                transfer_hyper_pattern(p, dst);
+                continue;
+            }
             ssid_t subject = transfer_element(p.subject);
             ssid_t predicate = transfer_element(p.predicate);
             dir_t direction = (dir_t)p.direction;

@@ -1,0 +1,17 @@
+#
+# SPARQL
+#
+# SELECT ?X ?Y ?Z WHERE {
+#   @ ?X ?Y ?Z @  ub:takeAdvisorCourse
+#   ?X  rdf:type  ub:UndergraduateStudent  .
+#   ?Y  rdf:type  ub:FullProfessor  .
+#   ?Z  rdf:type  ub:Course  .
+# }
+#
+# command: sparql -f sparql_query/lubm/hyper/hyper_q7 -p sparql_query/lubm/hyper/hyper_plan/lubm_q7.fmt
+#
+
+1 <
+2 >
+3 >
+4 >

@@ -167,8 +167,8 @@ public:
         Pattern(ssid_t subject, ssid_t predicate, ssid_t direction, ssid_t object):
             is_hyper(false), subject(subject), predicate(predicate), object(object), direction((dir_t)direction) { }
 
-        Pattern(std::vector<ssid_t> vars, ssid_t edge_type, int const_index):
-            is_hyper(true), vars(vars), edge_type(edge_type), const_index(const_index) { }
+        Pattern(std::vector<ssid_t> vars, ssid_t edge_type, int const_index, ssid_t edge_var):
+            is_hyper(true), vars(vars), edge_type(edge_type), const_index(const_index), edge_var(edge_var) { }
     
         void print_pattern() { }
     };
@@ -953,6 +953,7 @@ public:
          *
          */
         if (pattern_group.patterns.size() == 0) return false;
+        else if(pattern_group.patterns[0].is_hyper) return false;
         else if (is_tpid(pattern_group.patterns[0].subject)) {
             // When the subject is index, predicate must be TYPE or PREDICATE
             ASSERT_ERROR_CODE(pattern_group.patterns[0].predicate == PREDICATE_ID
@@ -1208,11 +1209,20 @@ char empty = 1;
 
 template<class Archive>
 void save(Archive &ar, const wukong::SPARQLQuery::Pattern &t, unsigned int version) {
-    ar << t.subject;
-    ar << t.predicate;
-    ar << t.object;
-    ar << t.direction;
-    ar << t.pred_type;
+    ar << t.is_hyper;
+    if (t.is_hyper) {
+        ar << t.vars;
+        ar << t.const_index;
+        ar << t.edge_type;
+        ar << t.edge_var;
+        ar << t.top_half;
+    } else {
+        ar << t.subject;
+        ar << t.predicate;
+        ar << t.object;
+        ar << t.direction;
+        ar << t.pred_type;
+    }
 #ifdef TRDF_MODE
     ar << t.time_interval;
 #endif
@@ -1220,11 +1230,20 @@ void save(Archive &ar, const wukong::SPARQLQuery::Pattern &t, unsigned int versi
 
 template<class Archive>
 void load(Archive &ar, wukong::SPARQLQuery::Pattern &t, unsigned int version) {
-    ar >> t.subject;
-    ar >> t.predicate;
-    ar >> t.object;
-    ar >> t.direction;
-    ar >> t.pred_type;
+    ar >> t.is_hyper;
+    if (t.is_hyper) {
+        ar >> t.vars;
+        ar >> t.const_index;
+        ar >> t.edge_type;
+        ar >> t.edge_var;
+        ar >> t.top_half;
+    } else {
+        ar >> t.subject;
+        ar >> t.predicate;
+        ar >> t.object;
+        ar >> t.direction;
+        ar >> t.pred_type;
+    }
 #ifdef TRDF_MODE
     ar >> t.time_interval;
 #endif
