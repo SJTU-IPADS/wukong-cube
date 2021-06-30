@@ -79,7 +79,7 @@ protected:
     std::shared_ptr<V2EStore> v2estore;
 
     // TODO: put hyperedge into vector?
-    // std::vector<uint64_t> he_offsets; 
+    // std::vector<uint64_t> he_offsets;
     // sid_t* he_store;
 
     // hyperedge-index
@@ -89,8 +89,8 @@ protected:
         uint64_t s = 0;
         while (s < v2etriples.size()) {
             uint64_t e = s + 1;
-            while ((e < v2etriples.size()) && 
-                   (v2etriples[s].vid == v2etriples[e].vid) && 
+            while ((e < v2etriples.size()) &&
+                   (v2etriples[s].vid == v2etriples[e].vid) &&
                    (v2etriples[s].edge_type == v2etriples[e].edge_type) &&
                    (v2etriples[s].index == v2etriples[e].index)) {
                 e++;
@@ -101,7 +101,7 @@ protected:
 
             // insert key (vid + edge_type + index)
             uint64_t slot_id = this->v2estore->insert_key(
-                hvkey_t(v2etriples[s].vid, v2etriples[s].edge_type, v2etriples[s].index), 
+                hvkey_t(v2etriples[s].vid, v2etriples[s].edge_type, v2etriples[s].index),
                 iptr_t(e - s, off));
 
             // insert eids
@@ -129,7 +129,7 @@ protected:
 
             // insert values (vids)
             std::copy(edge.vertices.begin(), edge.vertices.end(), &this->hestore->values[off]);
-        
+
             // hyperedge-index
             tbb_hedge_hash_map::accessor a;
             he_map.insert(a, edge.edge_type);
@@ -225,7 +225,6 @@ protected:
     }
 
 public:
-
     HyperGraph(int sid, Mem* mem, StringServer* str_server)
         : DGraph(sid, mem, str_server) {
         char* rdf_addr = mem->kvstore();
@@ -302,7 +301,7 @@ public:
                 edge_model.index_num = index_num;
                 edge_model.index_size.resize(index_num);
                 edge_model.index_type_hint.resize(index_num);
-                for(int i = 0; i < index_num; i++){
+                for (int i = 0; i < index_num; i++) {
                     ifs >> edge_model.index_size[i];
                 }
                 this->edge_types.push_back(edge_model);
@@ -360,17 +359,17 @@ public:
     inline int get_num_edge_types() const { return this->edge_types.size(); }
     // return total num of vertex types
     inline int get_num_vertex_types() const { return this->vertex_types.size(); }
-    
+
     inline std::vector<HyperEdgeModel> get_edge_types() const { return this->edge_types; }
     inline std::vector<sid_t> get_vertex_types() const { return this->vertex_types; }
-    
+
     std::vector<std::pair<sid_t*, uint64_t>> get_edges_by_type(int tid, sid_t edge_type) {
         // index vertex should be 0 and always local
         std::vector<std::pair<sid_t*, uint64_t>> result;
         uint64_t edge_sz;
         heid_t* hyper_edge_ids = v2estore->get_values(tid, this->sid, hvkey_t(0, edge_type, 0), edge_sz);
         result.reserve(edge_sz);
-        for(int i = 0; i < edge_sz; i++) {
+        for (int i = 0; i < edge_sz; i++) {
             uint64_t sz;
             sid_t* vids = hestore->get_values(tid, this->sid, hekey_t(hyper_edge_ids[i]), sz);
             result.push_back(std::make_pair(vids, sz));

@@ -45,10 +45,10 @@ struct V2ETriple {
     int index;
 
     bool operator==(const V2ETriple& triple) const {
-        if ((eid == triple.eid) 
-            && (vid == triple.vid) 
-            && (edge_type == triple.edge_type)
-            && (index == triple.index)) {
+        if ((eid == triple.eid) && 
+            (vid == triple.vid) && 
+            (edge_type == triple.edge_type) && 
+            (index == triple.index)) {
             return true;
         }
         return false;
@@ -58,7 +58,7 @@ struct V2ETriple {
 class HyperEdge {
 public:
     heid_t id;
-    sid_t edge_type; 
+    sid_t edge_type;
     std::vector<sid_t> vertices;
     // TODO: attribue
 
@@ -68,11 +68,9 @@ public:
     }
 
     bool operator==(const HyperEdge& edge) const {
-        if ((id == edge.id) 
-            && (edge_type == edge.edge_type) 
-            && (vertices.size() == edge.vertices.size())) {
-            for(int i = 0; i < vertices.size(); i++) {
-                if(vertices[i] != edge.vertices[i]) return false;
+        if ((id == edge.id) && (edge_type == edge.edge_type) && (vertices.size() == edge.vertices.size())) {
+            for (int i = 0; i < vertices.size(); i++) {
+                if (vertices[i] != edge.vertices[i]) return false;
             }
             return true;
         }
@@ -81,20 +79,20 @@ public:
 };
 
 struct v2etriple_sort {
-    inline bool operator()(const V2ETriple &t1, const V2ETriple &t2) {
+    inline bool operator()(const V2ETriple& t1, const V2ETriple& t2) {
         if (t1.vid < t2.vid)
             return true;
 
         if (t1.vid == t2.vid && t1.edge_type < t2.edge_type)
             return true;
-        
-        if (t1.vid == t2.vid && 
-            t1.edge_type == t2.edge_type && 
+
+        if (t1.vid == t2.vid &&
+            t1.edge_type == t2.edge_type &&
             t1.index < t2.index)
             return true;
 
-        if (t1.vid == t2.vid && 
-            t1.edge_type == t2.edge_type && 
+        if (t1.vid == t2.vid &&
+            t1.edge_type == t2.edge_type &&
             t1.index == t2.index &&
             t1.eid < t2.eid)
             return true;
@@ -104,9 +102,9 @@ struct v2etriple_sort {
 };
 
 struct hyperedge_sort {
-    inline bool operator()(const HyperEdge &e1, const HyperEdge &e2) {
+    inline bool operator()(const HyperEdge& e1, const HyperEdge& e2) {
         return e1.id < e2.id;
     }
 };
 
-}
+}  // namespace wukong
