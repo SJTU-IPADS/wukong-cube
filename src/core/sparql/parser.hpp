@@ -897,6 +897,7 @@ private:
             }
             Element predicate = parsePatternElement(group, localVars);
             ssid_t edge_var = -(++namedVariableCount);
+            variableCount++;
             group.patterns.push_back(Pattern(vars, predicate, edge_var));
             return;
         } else {

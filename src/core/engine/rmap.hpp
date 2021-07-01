@@ -94,8 +94,11 @@ public:
         SPARQLQuery &reply = internal_map[qid].reply;
 
         // copy metadata of result
-        r.result.col_num = reply.result.col_num;
         r.result.row_num = reply.result.row_num;
+        r.result.col_num = reply.result.col_num;
+        r.result.heid_res_table.col_num = reply.result.heid_res_table.col_num;
+        r.result.float_res_table.col_num = reply.result.heid_res_table.col_num;
+        r.result.double_res_table.col_num = reply.result.heid_res_table.col_num;
     #ifdef TRDF_MODE
         r.result.time_col_num = reply.result.time_col_num;
     #endif
@@ -105,6 +108,9 @@ public:
 
         // copy data of result
         r.result.result_table.swap(reply.result.result_table);
+        r.result.heid_res_table.swap(reply.result.heid_res_table);
+        r.result.float_res_table.swap(reply.result.float_res_table);
+        r.result.double_res_table.swap(reply.result.double_res_table);
     #ifdef TRDF_MODE
         r.result.time_res_table.swap(reply.result.time_res_table);
     #endif

@@ -236,6 +236,7 @@ private:
     }
 
     void hyper_index_to_unknown(SPARQLQuery &req) {
+        std::cout << "hyper_index_to_unknown" << std::endl;
         SPARQLQuery::Pattern &pattern = req.get_pattern();
         SPARQLQuery::Result &res = req.result;
 
@@ -274,6 +275,7 @@ private:
     }
 
     void hyper_const_to_unknown(SPARQLQuery &req) {
+        std::cout << "hyper_const_to_unknown" << std::endl;
         SPARQLQuery::Pattern &pattern = req.get_pattern();
         SPARQLQuery::Result &res = req.result;
     
@@ -305,7 +307,6 @@ private:
             std::vector<sid_t> updated_result_table;
             updated_result_table.reserve(res.result_table.size());
 
-            int index = pattern.const_index;
             sid_t edge_var = pattern.edge_var;
 
             sid_t *vids = NULL;
@@ -333,10 +334,13 @@ private:
             res.heid_res_table.clear();
             
             // update metadata
-            res.set_col_num(res.get_col_num() + pattern.vars.size());
+            int col_idx = res.get_col_num();
             for(int i = 0; i < pattern.vars.size(); i++) {
-                res.add_var2col(pattern.vars[i], res.get_col_num() + i);
+                if(i == pattern.const_index) continue;
+                res.add_var2col(pattern.vars[i], col_idx);
+                col_idx++;
             }
+            res.set_col_num(res.get_col_num() + pattern.vars.size() - 1);
             res.update_nrows();
 
             req.pattern_step++;
@@ -344,17 +348,15 @@ private:
         }
     }
 
-    void hyper_known_to_unknown(SPARQLQuery &req) {
+    void hyper_known_to_unknown(SPARQLQuery &req, int known_index) {
+        std::cout << "hyper_known_to_unknown" << std::endl;
         SPARQLQuery::Pattern &pattern = req.get_pattern();
         SPARQLQuery::Result &res = req.result;
-    
-        // MUST be the first triple pattern
-        ASSERT_ERROR_CODE(res.get_col_num() == 0,
-                              FIRST_PATTERN_ERROR);
 
         if(pattern.top_half) {
+            std::cout << "Top half" << std::endl;
             // retrieve hyperedge id
-            int index = pattern.const_index;
+            int index = known_index;
             ssid_t start = pattern.vars[index];
             sid_t predicate = pattern.edge_type;
 
@@ -387,11 +389,12 @@ private:
             res.update_nrows();
             pattern.top_half = false;
         } else {
+            std::cout << "Bottom half" << std::endl;
+            std::cout << "known_index:" << known_index << std::endl;
             // retrieve hyperedge value
             std::vector<sid_t> updated_result_table;
             updated_result_table.reserve(res.result_table.size());
 
-            int index = pattern.const_index;
             sid_t edge_var = pattern.edge_var;
 
             sid_t *vids = NULL;
@@ -409,7 +412,7 @@ private:
                 // append a new intermediate result (row)
                 res.append_row_to(i, updated_result_table);
                 for (uint64_t k = 0; k < sz; k++) {
-                    if(k == pattern.const_index) continue;
+                    if(k == known_index) continue;
                     updated_result_table.push_back(vids[k]);
                 }
             }
@@ -419,10 +422,13 @@ private:
             res.heid_res_table.clear();
             
             // update metadata
-            res.set_col_num(res.get_col_num() + pattern.vars.size());
+            int col_idx = res.get_col_num();
             for(int i = 0; i < pattern.vars.size(); i++) {
-                res.add_var2col(pattern.vars[i], res.get_col_num() + i);
+                if(i == known_index) continue;
+                res.add_var2col(pattern.vars[i], col_idx);
+                col_idx++;
             }
+            res.set_col_num(res.get_col_num() + pattern.vars.size() - 1);
             res.update_nrows();
 
             req.pattern_step++;
@@ -939,6 +945,24 @@ private:
         SPARQLQuery::Pattern &pattern = req.get_pattern();
         ssid_t start = pattern.subject;
 
+        if(pattern.is_hyper) {
+            std::cout << "hyper pattern generate_sub_query" << std::endl;
+            if(pattern.top_half) {
+                std::vector<vstat> vstats;
+                int known_idx = -1;
+                for(int i = 0; i < pattern.vars.size(); i++) {
+                    if(req.result.var_stat(pattern.vars[i]) == KNOWN_VAR) {
+                        assert(known_idx == -1);
+                        known_idx = i;
+                    }
+                }
+                assert(known_idx != -1);
+                start = pattern.vars[known_idx];
+            } else {
+                start = pattern.edge_var;
+            }
+        }
+
         // generate sub requests for all servers
         std::vector<SPARQLQuery> sub_reqs(Global::num_servers);
         for (int i = 0; i < Global::num_servers; i++) {
@@ -955,6 +979,10 @@ private:
             // metadata
             sub_reqs[i].result.col_num = req.result.col_num;
             sub_reqs[i].result.attr_col_num = req.result.attr_col_num;
+            sub_reqs[i].result.heid_res_table.col_num = req.result.heid_res_table.col_num;
+            sub_reqs[i].result.float_res_table.col_num = req.result.float_res_table.col_num;
+            sub_reqs[i].result.double_res_table.col_num = req.result.double_res_table.col_num;
+            
             sub_reqs[i].result.blind = req.result.blind;
             sub_reqs[i].result.v2c_map  = req.result.v2c_map;
             sub_reqs[i].result.nvars  = req.result.nvars;
@@ -967,6 +995,7 @@ private:
             for (int i = 0; i < Global::num_servers; i++){
                 sub_reqs[i].result.dup_rows(req.result.result_table);
                 sub_reqs[i].result.dup_attr_rows(req.result.attr_res_table);
+                sub_reqs[i].result.dup_result_table(req.result);
                 sub_reqs[i].result.update_nrows();
             }
 
@@ -974,10 +1003,17 @@ private:
         // result table need to be separated to ditterent sub-queries
         else {
             for (int i = 0; i < nrows; i++) {
-                int dst_sid = PARTITION(req.result.get_row_col(i, req.result.var2col(start)));
+                int dst_sid;
+                if(pattern.is_hyper && !pattern.top_half) {
+                    dst_sid = PARTITION(req.result.heid_res_table.get_row_col(i, req.result.var2col(start)));
+                } else {
+                    dst_sid = PARTITION(req.result.get_row_col(i, req.result.var2col(start)));
+                    assert(req.result.heid_res_table.col_num == 0);
+                }
+
                 req.result.append_row_to(i, sub_reqs[dst_sid].result.result_table);
                 req.result.append_attr_row_to(i, sub_reqs[dst_sid].result.attr_res_table);
-
+                req.result.append_res_table_row_to(i, sub_reqs[dst_sid].result);
                 if (req.pg_type == SPARQLQuery::PGType::OPTIONAL)
                     sub_reqs[dst_sid].result.optional_matched_rows.push_back(req.result.optional_matched_rows[i]);
             }
@@ -999,11 +1035,26 @@ private:
 
         SPARQLQuery::Pattern &pattern = req.get_pattern();
 
-        // TODO: implement fork-and-join execution mode for hyper-pattern
-        if(pattern.is_hyper) return false;
+        ssid_t start;
+        if(pattern.is_hyper) {
+            if(pattern.top_half) {
+                std::vector<vstat> vstats;
+                int known_idx = -1;
+                for(int i = 0; i < pattern.vars.size(); i++) {
+                    if(req.result.var_stat(pattern.vars[i]) == KNOWN_VAR) {
+                        assert(known_idx == -1);
+                        known_idx = i;
+                    }
+                }
+                start = pattern.vars[known_idx];
+            } else {
+                start = pattern.edge_var;
+            }
+        } else {
+            ASSERT_ERROR_CODE(req.result.var_stat(pattern.subject) == KNOWN_VAR, OBJ_ERROR);
+            start = pattern.subject;
+        }
 
-        ASSERT_ERROR_CODE(req.result.var_stat(pattern.subject) == KNOWN_VAR, OBJ_ERROR);
-        ssid_t start = pattern.subject;
         return ((req.local_var != start) // next hop is not local
                 && (req.result.get_row_num() >= Global::rdma_threshold)); // FIXME: not consider dedup
     }
@@ -1131,31 +1182,36 @@ private:
     }
 
     void execute_one_hyper_pattern(SPARQLQuery &req) {
+        logstream(LOG_DEBUG) << "Execute a hyper pattern" << LOG_endl;
         SPARQLQuery::Pattern &pattern = req.get_pattern();
 
         std::vector<ssid_t> vars = pattern.vars;
         ssid_t predicate = pattern.edge_type;
         int const_index = pattern.const_index;
 
-        if(req.pattern_step == 0 && const_index == -1) {
+        if(req.pattern_step == 0 && req.start_from_index()) {
             hyper_index_to_unknown(req);
             return;
         }
 
-        std::vector<vstat> vstats;
-        for(ssid_t var : vars) {
-            vstats.push_back(req.result.var_stat(var));
+        int known_index = -1;
+        for(int i = 0; i < pattern.vars.size(); i++) {
+            if(req.result.var_stat(pattern.vars[i]) == KNOWN_VAR) {
+                // only one KNOWN_VAR is allowed
+                assert(known_index == -1);
+                known_index = i;
+            }
         }
 
         // 1. const_to_unknown
-        if(const_index >= 0 && std::find(vstats.begin(), vstats.end(), KNOWN_VAR) == vstats.end()) {
+        if(const_index != -1 && known_index == -1) {
             hyper_const_to_unknown(req);
             return;
         }
 
         // 2. known_to_unknown
-        if(const_index == -1 && std::find(vstats.begin(), vstats.end(), KNOWN_VAR) != vstats.end()) {
-            hyper_known_to_unknown(req);
+        if(const_index == -1 && known_index != -1) {
+            hyper_known_to_unknown(req, known_index);
             return;
         }
 

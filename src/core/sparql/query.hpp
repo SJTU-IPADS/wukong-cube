@@ -152,7 +152,7 @@ public:
         std::vector<ssid_t> vars;
         ssid_t edge_var;
         ssid_t edge_type;
-        int const_index;
+        int const_index = -1;
         bool top_half = true;
 
     #ifdef TRDF_MODE
@@ -327,6 +327,10 @@ public:
             result_data.swap(update);
         }
 
+        void swap(ResultTable<DataType> &update) {
+            result_data.swap(update.result_data);
+        }
+
         void set_col_num(int n) {
             col_num = n;
         }
@@ -344,16 +348,17 @@ public:
             return result_data[col_num * r + c];
         }
 
-        void append_row_to(int r, std::vector<DataType> &update) {
+        void append_row_to(int r, ResultTable<DataType> &update) {
             for (int c = 0; c < col_num; c++)
-                update.push_back(get_row_col(r, c));
+                update.result_data.push_back(get_row_col(r, c));
         }
 
-        void dup_rows(std::vector<DataType> &update){
-            result_data.assign(update.begin(), update.end());
+        void dup_rows(ResultTable<DataType> &update){
+            result_data.assign(update.result_data.begin(), 
+                               update.result_data.end());
         }
         
-        void append_result(ResultTable<DataType> result) {
+        void append_result(ResultTable<DataType>& result) {
             col_num = result.col_num;
             result_data.insert(result_data.end(),
                                result.result_data.begin(),
@@ -636,6 +641,18 @@ public:
             result_table.assign(update.begin(), update.end());
         }
 
+        void append_res_table_row_to(int r, Result& result) {
+            heid_res_table.append_row_to(r, result.heid_res_table);
+            float_res_table.append_row_to(r, result.float_res_table);
+            double_res_table.append_row_to(r, result.double_res_table);
+        }
+
+        void dup_result_table(Result& result) {
+            heid_res_table.dup_rows(result.heid_res_table);
+            float_res_table.dup_rows(result.float_res_table);
+            double_res_table.dup_rows(result.double_res_table);
+        }
+
     #ifdef TRDF_MODE
         // TIMT_T result (i.e., timestamp)
         void set_time_col_num(int n) {
@@ -803,6 +820,7 @@ public:
             v2c_map = r.v2c_map;
             col_num = r.col_num;
             heid_res_table.append_result(r.heid_res_table);
+            float_res_table.append_result(r.float_res_table);
             double_res_table.append_result(r.double_res_table);
         #ifdef TRDF_MODE
             time_col_num = r.time_col_num;
@@ -953,7 +971,9 @@ public:
          *
          */
         if (pattern_group.patterns.size() == 0) return false;
-        else if(pattern_group.patterns[0].is_hyper) return false;
+        else if(pattern_group.patterns[0].is_hyper) {
+            return (pattern_group.patterns[0].const_index == -1);
+        }
         else if (is_tpid(pattern_group.patterns[0].subject)) {
             // When the subject is index, predicate must be TYPE or PREDICATE
             ASSERT_ERROR_CODE(pattern_group.patterns[0].predicate == PREDICATE_ID
