@@ -116,7 +116,7 @@ protected:
 
         // the kvstore is temporally split into #servers pieces.
         // hence, the kvstore can be directly RDMA write in parallel by all servers
-        uint64_t kvs_sz = floor(mem->kvstore_size() / Global::num_servers - sizeof(uint64_t), sizeof(sid_t));
+        uint64_t kvs_sz = floor(mem->kvstore_size() / Global::num_servers - sizeof(uint64_t), sizeof(DataType));
 
         // serialize the RDMA WRITEs by multiple threads
         uint64_t exist = __sync_fetch_and_add(&num_datas[dst_sid], n);
@@ -154,7 +154,7 @@ protected:
     void send_hyperedge(int tid, int dst_sid, HyperEdge& edge) {
         // the RDMA buffer is first split into #threads partitions
         // each partition is further split into #servers pieces
-        // each piece: #hyperedges, tirple, triple, . . .
+        // each piece: #hyperedges, triple, triple, . . .
         uint64_t buf_sz = floor(mem->buffer_size() / Global::num_servers - sizeof(uint64_t), sizeof(sid_t));
         uint64_t* pn = reinterpret_cast<uint64_t*>(mem->buffer(tid) + (buf_sz + sizeof(uint64_t)) * dst_sid);
         sid_t* buf = reinterpret_cast<sid_t*>(pn + 1);
@@ -440,16 +440,17 @@ protected:
                 }
             }
         }
+        MPI_Barrier(MPI_COMM_WORLD);
     }
 
     void aggregate_v2e_triples(int num_partitions,
                         std::vector<std::vector<V2ETriple>>& v2etriples) {
-        // calculate #hyperedges on the kvstore from all servers
+        // calculate #v2etriples on the kvstore from all servers
         uint64_t total = 0;
         uint64_t kvs_sz = floor(mem->kvstore_size() / num_partitions - sizeof(uint64_t), sizeof(V2ETriple));
         for (int i = 0; i < num_partitions; i++) {
             uint64_t* pn = reinterpret_cast<uint64_t*>(mem->kvstore() + (kvs_sz + sizeof(uint64_t)) * i);
-            total += *pn;  // the 1st uint64_t of kvs records #hyperedges
+            total += *pn;  // the 1st uint64_t of kvs records #v2etriples
         }
 
         // pre-expand to avoid frequent reallocation (maybe imbalance)
@@ -457,8 +458,8 @@ protected:
             v2etriples[i].reserve(total / Global::num_engines);
         }
 
-        // each thread will scan all hyperedges (from all servers) and pickup certain hyperedges.
-        // It ensures that the hyperedges belong to the same vertex will be stored in the same
+        // each thread will scan all v2etriples (from all servers) and pickup certain hyperedges.
+        // It ensures that the v2etriples belong to the same vertex will be stored in the same
         // triple_pso/ops. This will simplify the deduplication and insertion to gstore.
         volatile uint64_t progress = 0;
         #pragma omp parallel for num_threads(Global::num_engines)
