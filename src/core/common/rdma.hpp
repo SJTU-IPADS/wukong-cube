@@ -131,6 +131,8 @@ public:
 
             rctrl->start_daemon();
 
+            MPI_Barrier(MPI_COMM_WORLD);
+
             connections.resize(nthds);
             for(auto& vec : connections) {
                 vec.resize(nnodes);
