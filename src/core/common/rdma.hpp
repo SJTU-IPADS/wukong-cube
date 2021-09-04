@@ -24,6 +24,7 @@
 
 //#pragma GCC diagnostic warning ignored "-fpermissive"
 
+#include <boost/mpi.hpp>
 #include <iostream>     // std::cout
 #include <fstream>      // std::ifstream
 #include <vector>
