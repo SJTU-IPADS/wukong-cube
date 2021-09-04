@@ -3,6 +3,5 @@ PREFIX ub: <http://swat.cse.lehigh.edu/onto/univ-bench.owl#>
 
 SELECT ?X ?S ?E WHERE {
 	[?S, ?E] ?X  ub:subOrganizationOf  %ub:Department  .
-	?X  rdf:type  ub:ResearchGroup .
 }
 
