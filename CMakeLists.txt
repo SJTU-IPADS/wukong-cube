@@ -96,6 +96,29 @@ if(TRDF_MODE)
   add_definitions(-DTRDF_MODE)
 endif(TRDF_MODE)
 
+#### Support yacc & bison for sparql
+execute_process(
+  COMMAND bison -t -rall ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.y -d -b ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql
+)
+if(TRDF_MODE)
+  execute_process(
+    COMMAND flex -o ${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql_time.l
+  )
+else()
+  execute_process(
+    COMMAND flex -o ${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.l
+  )
+endif(TRDF_MODE)
+
+SET_SOURCE_FILES_PROPERTIES(${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c 
+  ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.tab.c 
+  PROPERTIES LANGUAGE CXX)
+
+add_library(sparql_lex 
+  ${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c 
+  ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.tab.c)
+
+
 #### 64-bit ID (32-bit ID by default)
 option (USE_DTYPE_64BIT "use 64-bit ID" OFF)
 if(USE_DTYPE_64BIT)
@@ -103,7 +126,7 @@ if(USE_DTYPE_64BIT)
 endif(USE_DTYPE_64BIT)
 
 
-set(WUKONG_LIBS ${WUKONG_LIBS} zmq rt tbb hwloc)
+set(WUKONG_LIBS ${WUKONG_LIBS} zmq rt tbb hwloc sparql_lex)
 
 ## Build Wukong
 target_link_libraries(wukong ${WUKONG_LIBS} ${BOOST_LIB}/libboost_mpi.a ${BOOST_LIB}/libboost_serialization.a ${BOOST_LIB}/libboost_program_options.a)
