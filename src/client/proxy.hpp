@@ -306,7 +306,7 @@ public:
     // Run a single query for @cnt times. Command is "-f"
     // @is: input
     // @reply: result
-    int run_single_query(std::istream &is, std::istream &fmt_stream, int nopts,
+    int run_single_query(std::string fname, std::istream &fmt_stream, int nopts,
                          int mt_factor, bool snd2gpu, int cnt, int nlines, std::string ofname,
                          SPARQLQuery &reply, Monitor &monitor) {
         uint64_t start, end;
@@ -314,11 +314,10 @@ public:
 
         // Parse the SPARQL query
         start = timer::get_usec();
-        if (!parser.parse(is, request)) {
+        int ret = parser.parse(fname, request);
+        if (ret) {
             // logstream(LOG_ERROR) << "Parsing failed! (" << parser.strerror << ")" << LOG_endl;
-            is.clear();
-            is.seekg(0);
-            ASSERT_ERROR_CODE(false, SYNTAX_ERROR);
+            ASSERT_ERROR_CODE(false, ret);
         }
         end = timer::get_usec();
         logstream(LOG_INFO) << "Parsing time: " << (end - start) << " usec" << LOG_endl;
@@ -439,24 +438,18 @@ public:
             int load;
 
             is >> fname;
-            std::ifstream ifs(fname);
-            if (!ifs) {
-                logstream(LOG_ERROR) << "Query file not found: " << fname << LOG_endl;
-                return -1; // file not found
-            }
-
             is >> load;
             ASSERT(load > 0);
             loads[i] = load;
 
             // parse the query
-            bool success = i < nlights ?
-                           parser.parse_template(ifs, tpls[i]) : // light query
-                           parser.parse(ifs, heavy_reqs[i - nlights]); // heavy query
+            int ret = i < nlights ?
+                           parser.parse_template(fname,tpls[i]) : // light query
+                           parser.parse(fname,heavy_reqs[i - nlights]); // heavy query
 
-            if (!success) {
+            if (ret) {
                 logstream(LOG_ERROR) << "Template parsing failed!" << LOG_endl;
-                return -2; // parsing failed
+                return -ret; // parsing failed
             }
 
             // generate a template for each class of light query
