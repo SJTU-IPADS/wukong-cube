@@ -53,8 +53,7 @@ namespace wukong {
 class HyperGraphBaseLoader : public HyperGraphLoaderInterface {
 protected:
     int sid;
-    Mem* mem;
-    StringServer* str_server;
+    LoaderMem loader_mem;
 
     std::vector<uint64_t> num_hyperedges;  // record #hyperedges loaded from input data for each server
     std::vector<uint64_t> num_datas;  // record #sids loaded from input data for each server
@@ -107,24 +106,24 @@ protected:
 
     template<class DataType>
     void flush_data(int tid, int dst_sid) {
-        uint64_t buf_sz = floor(mem->buffer_size() / Global::num_servers - sizeof(uint64_t), sizeof(DataType));
-        uint64_t* pn = reinterpret_cast<uint64_t*>(mem->buffer(tid) + (buf_sz + sizeof(uint64_t)) * dst_sid);
-        DataType* buf = reinterpret_cast<DataType*>(pn + 1);
+        uint64_t lbuf_partition_sz = floor(loader_mem.local_buf_sz / Global::num_servers - sizeof(uint64_t), sizeof(DataType));
+        uint64_t* pn = reinterpret_cast<uint64_t*>((loader_mem.local_buf + loader_mem.local_buf_sz * tid) + (lbuf_partition_sz + sizeof(uint64_t)) * dst_sid);
+        DataType* lbuf_partition = reinterpret_cast<DataType*>(pn + 1);
 
         // the 1st uint64_t of buffer records #new-hyperedges
         uint64_t n = *pn;
 
         // the kvstore is temporally split into #servers pieces.
         // hence, the kvstore can be directly RDMA write in parallel by all servers
-        uint64_t kvs_sz = floor(mem->kvstore_size() / Global::num_servers - sizeof(uint64_t), sizeof(DataType));
+        uint64_t gbuf_partition_sz = floor(loader_mem.global_buf_sz / Global::num_servers - sizeof(uint64_t), sizeof(DataType));
 
         // serialize the RDMA WRITEs by multiple threads
         uint64_t exist = __sync_fetch_and_add(&num_datas[dst_sid], n);
 
         uint64_t cur_sz = (exist + n) * sizeof(DataType);
-        if (cur_sz > kvs_sz) {
+        if (cur_sz > gbuf_partition_sz) {
             logstream(LOG_ERROR) << "no enough space to store input data!" << LOG_endl;
-            logstream(LOG_ERROR) << " kvstore size = " << kvs_sz
+            logstream(LOG_ERROR) << " kvstore size = " << gbuf_partition_sz
                                  << " #exist-hyperedges = " << exist
                                  << " #new-hyperedges = " << n
                                  << LOG_endl;
@@ -132,7 +131,7 @@ protected:
         }
 
         // send hyperedges and clear the buffer
-        uint64_t off = (kvs_sz + sizeof(uint64_t)) * sid
+        uint64_t off = (gbuf_partition_sz + sizeof(uint64_t)) * sid
                         + sizeof(uint64_t)           // reserve the 1st uint64_t as #hyperedges
                         + exist * sizeof(DataType); // skip #exist-data
         
@@ -140,9 +139,9 @@ protected:
 
         if (dst_sid != sid) {
             RDMA& rdma = RDMA::get_rdma();
-            rdma.dev->RdmaWrite(tid, dst_sid, reinterpret_cast<char*>(buf), sz, off);
+            rdma.dev->RdmaWrite(tid, dst_sid, reinterpret_cast<char*>(lbuf_partition), sz, off);
         } else {
-            memcpy(mem->kvstore() + off, reinterpret_cast<char*>(buf), sz);
+            memcpy(loader_mem.global_buf + off, reinterpret_cast<char*>(lbuf_partition), sz);
         }
 
         // clear the buffer
@@ -155,9 +154,9 @@ protected:
         // the RDMA buffer is first split into #threads partitions
         // each partition is further split into #servers pieces
         // each piece: #hyperedges, triple, triple, . . .
-        uint64_t buf_sz = floor(mem->buffer_size() / Global::num_servers - sizeof(uint64_t), sizeof(sid_t));
-        uint64_t* pn = reinterpret_cast<uint64_t*>(mem->buffer(tid) + (buf_sz + sizeof(uint64_t)) * dst_sid);
-        sid_t* buf = reinterpret_cast<sid_t*>(pn + 1);
+        uint64_t lbuf_partition_sz = floor(loader_mem.local_buf_sz / Global::num_servers - sizeof(uint64_t), sizeof(sid_t));
+        uint64_t* pn = reinterpret_cast<uint64_t*>((loader_mem.local_buf + loader_mem.local_buf_sz * tid) + (lbuf_partition_sz + sizeof(uint64_t)) * dst_sid);
+        sid_t* lbuf_partition = reinterpret_cast<sid_t*>(pn + 1);
 
         // the 1st entry of buffer records #hyperedges (suppose the )
         uint64_t n = *pn;
@@ -166,16 +165,16 @@ protected:
 
         // flush buffer if there is no enough space to buffer a new triple
         uint64_t cur_sz = (n + num_ids) * sizeof(sid_t);
-        if (cur_sz > buf_sz) {
+        if (cur_sz > lbuf_partition_sz) {
             flush_data<sid_t>(tid, dst_sid);
             n = *pn;  // reset, it should be 0
             ASSERT(n == 0);
         }
 
         // buffer the hyperedge and update the counter
-        buf[n] = edge.edge_type;
-        buf[n+1] = edge.vertices.size();
-        std::copy(edge.vertices.begin(), edge.vertices.end(), &buf[n+2]);
+        lbuf_partition[n] = edge.edge_type;
+        lbuf_partition[n+1] = edge.vertices.size();
+        std::copy(edge.vertices.begin(), edge.vertices.end(), &lbuf_partition[n+2]);
         *pn = (n + num_ids);
     }
 
@@ -185,23 +184,23 @@ protected:
         // the RDMA buffer is first split into #threads partitions
         // each partition is further split into #servers pieces
         // each piece: #hyperedges, tirple, triple, . . .
-        uint64_t buf_sz = floor(mem->buffer_size() / Global::num_servers - sizeof(uint64_t), sizeof(V2ETriple));
-        uint64_t* pn = reinterpret_cast<uint64_t*>(mem->buffer(tid) + (buf_sz + sizeof(uint64_t)) * dst_sid);
-        V2ETriple* buf = reinterpret_cast<V2ETriple*>(pn + 1);
+        uint64_t lbuf_partition_sz = floor(loader_mem.local_buf_sz / Global::num_servers - sizeof(uint64_t), sizeof(V2ETriple));
+        uint64_t* pn = reinterpret_cast<uint64_t*>((loader_mem.local_buf + loader_mem.local_buf_sz * tid) + (lbuf_partition_sz + sizeof(uint64_t)) * dst_sid);
+        V2ETriple* lbuf_partition = reinterpret_cast<V2ETriple*>(pn + 1);
 
         // the 1st entry of buffer records #hyperedges
         uint64_t n = *pn;
 
         // flush buffer if there is no enough space to buffer a new triple
         uint64_t cur_sz = (n + 1) * sizeof(V2ETriple);
-        if (cur_sz > buf_sz) {
+        if (cur_sz > lbuf_partition_sz) {
             flush_data<V2ETriple>(tid, dst_sid);
             n = *pn;  // reset, it should be 0
             ASSERT(n == 0);
         }
 
         // buffer the hyperedge and update the counter
-        buf[n] = triple;
+        lbuf_partition[n] = triple;
         *pn = (n + 1);
     }
 
@@ -228,8 +227,8 @@ protected:
         // init #cnt
         for (int s = 0; s < Global::num_servers; s++) {
             for (int t = 0; t < Global::num_engines; t++) {
-                uint64_t buf_sz = floor(mem->buffer_size() / Global::num_servers - sizeof(uint64_t), sizeof(sid_t));
-                uint64_t* pn = reinterpret_cast<uint64_t*>(mem->buffer(t) + (buf_sz + sizeof(uint64_t)) * s);
+                uint64_t lbuf_partition_sz = floor(loader_mem.local_buf_sz / Global::num_servers - sizeof(uint64_t), sizeof(sid_t));
+                uint64_t* pn = reinterpret_cast<uint64_t*>((loader_mem.local_buf + loader_mem.local_buf_sz * t) + (lbuf_partition_sz + sizeof(uint64_t)) * s);
                 *pn = 0;
             }
         }
@@ -255,16 +254,16 @@ protected:
 
         // exchange #hyperedges among all servers
         for (int s = 0; s < Global::num_servers; s++) {
-            uint64_t* buf = reinterpret_cast<uint64_t*>(mem->buffer(0));
-            buf[0] = num_datas[s];
+            uint64_t* lbuf_partition = reinterpret_cast<uint64_t*>(loader_mem.local_buf);
+            lbuf_partition[0] = num_datas[s];
 
-            uint64_t kvs_sz = floor(mem->kvstore_size() / Global::num_servers - sizeof(uint64_t), sizeof(sid_t));
-            uint64_t offset = (kvs_sz + sizeof(uint64_t)) * sid;
+            uint64_t gbuf_partition_sz = floor(loader_mem.global_buf_sz / Global::num_servers - sizeof(uint64_t), sizeof(sid_t));
+            uint64_t offset = (gbuf_partition_sz + sizeof(uint64_t)) * sid;
             if (s != sid) {
                 RDMA& rdma = RDMA::get_rdma();
-                rdma.dev->RdmaWrite(0, s, reinterpret_cast<char*>(buf), sizeof(uint64_t), offset);
+                rdma.dev->RdmaWrite(0, s, reinterpret_cast<char*>(lbuf_partition), sizeof(uint64_t), offset);
             } else {
-                memcpy(mem->kvstore() + offset, reinterpret_cast<char*>(buf), sizeof(uint64_t));
+                memcpy(loader_mem.global_buf + offset, reinterpret_cast<char*>(lbuf_partition), sizeof(uint64_t));
             }
         }
         MPI_Barrier(MPI_COMM_WORLD);
@@ -276,8 +275,8 @@ protected:
         // init #cnt
         for (int s = 0; s < Global::num_servers; s++) {
             for (int t = 0; t < Global::num_engines; t++) {
-                uint64_t buf_sz = floor(mem->buffer_size() / Global::num_servers - sizeof(uint64_t), sizeof(V2ETriple));
-                uint64_t* pn = reinterpret_cast<uint64_t*>(mem->buffer(t) + (buf_sz + sizeof(uint64_t)) * s);
+                uint64_t lbuf_partition_sz = floor(loader_mem.local_buf_sz / Global::num_servers - sizeof(uint64_t), sizeof(V2ETriple));
+                uint64_t* pn = reinterpret_cast<uint64_t*>((loader_mem.local_buf + loader_mem.local_buf_sz * t) + (lbuf_partition_sz + sizeof(uint64_t)) * s);
                 *pn = 0;
             }
         }
@@ -313,16 +312,16 @@ protected:
 
         // exchange #hyperedges among all servers
         for (int s = 0; s < Global::num_servers; s++) {
-            uint64_t* buf = reinterpret_cast<uint64_t*>(mem->buffer(0));
-            buf[0] = num_datas[s];
+            uint64_t* lbuf_partition = reinterpret_cast<uint64_t*>(loader_mem.local_buf);
+            lbuf_partition[0] = num_datas[s];
 
-            uint64_t kvs_sz = floor(mem->kvstore_size() / Global::num_servers - sizeof(uint64_t), sizeof(V2ETriple));
-            uint64_t offset = (kvs_sz + sizeof(uint64_t)) * sid;
+            uint64_t gbuf_partition_sz = floor(loader_mem.global_buf_sz / Global::num_servers - sizeof(uint64_t), sizeof(V2ETriple));
+            uint64_t offset = (gbuf_partition_sz + sizeof(uint64_t)) * sid;
             if (s != sid) {
                 RDMA& rdma = RDMA::get_rdma();
-                rdma.dev->RdmaWrite(0, s, reinterpret_cast<char*>(buf), sizeof(uint64_t), offset);
+                rdma.dev->RdmaWrite(0, s, reinterpret_cast<char*>(lbuf_partition), sizeof(uint64_t), offset);
             } else {
-                memcpy(mem->kvstore() + offset, reinterpret_cast<char*>(buf), sizeof(uint64_t));
+                memcpy(loader_mem.global_buf + offset, reinterpret_cast<char*>(lbuf_partition), sizeof(uint64_t));
             }
         }
         MPI_Barrier(MPI_COMM_WORLD);
@@ -335,7 +334,7 @@ protected:
                        std::vector<std::string>& fnames) {
         std::sort(fnames.begin(), fnames.end());
 
-        auto lambda = [&](std::istream& file, uint64_t& n, uint64_t kvs_sz, sid_t* kvs) {
+        auto lambda = [&](std::istream& file, uint64_t& n, uint64_t gbuf_partition_sz, sid_t* kvs) {
             HyperEdge edge;
             while (file >> edge.edge_type) {
                 ASSERT(edge_models.count(edge.edge_type));
@@ -347,7 +346,7 @@ protected:
                 // TODO: more balanced partition
                 int dst_sid = PARTITION(edge.vertices[0]);
                 if (dst_sid == sid) {
-                    ASSERT((n + edge.get_num_ids()) * sizeof(sid_t) <= kvs_sz);
+                    ASSERT((n + edge.get_num_ids()) * sizeof(sid_t) <= gbuf_partition_sz);
                     // buffer the hyperedge and update the counter
                     kvs[n] = edge.edge_type;
                     kvs[n+1] = edge.vertices.size();
@@ -359,8 +358,8 @@ protected:
 
         // init #cnt
         for (int t = 0; t < Global::num_engines; t++) {
-            uint64_t kvs_sz = floor(mem->kvstore_size() / Global::num_engines - sizeof(uint64_t), sizeof(sid_t));
-            uint64_t* pn = reinterpret_cast<uint64_t*>(mem->kvstore() + (kvs_sz + sizeof(uint64_t)) * t);
+            uint64_t gbuf_partition_sz = floor(loader_mem.global_buf_sz / Global::num_engines - sizeof(uint64_t), sizeof(sid_t));
+            uint64_t* pn = reinterpret_cast<uint64_t*>(loader_mem.global_buf + (gbuf_partition_sz + sizeof(uint64_t)) * t);
             *pn = 0;
         }
 
@@ -368,16 +367,16 @@ protected:
         #pragma omp parallel for num_threads(Global::num_engines)
         for (int i = 0; i < num_files; i++) {
             int localtid = omp_get_thread_num();
-            uint64_t kvs_sz = floor(mem->kvstore_size() / Global::num_engines - sizeof(uint64_t),
+            uint64_t gbuf_partition_sz = floor(loader_mem.global_buf_sz / Global::num_engines - sizeof(uint64_t),
                                     sizeof(sid_t));
-            uint64_t* pn = reinterpret_cast<uint64_t*>(mem->kvstore() + (kvs_sz + sizeof(uint64_t)) * localtid);
+            uint64_t* pn = reinterpret_cast<uint64_t*>(loader_mem.global_buf + (gbuf_partition_sz + sizeof(uint64_t)) * localtid);
             sid_t* kvs = reinterpret_cast<sid_t*>(pn + 1);
 
             // the 1st uint64_t of kvs records #hyperedges
             uint64_t n = *pn;
 
             std::istream* file = init_istream(fnames[i]);
-            lambda(*file, n, kvs_sz, kvs);
+            lambda(*file, n, gbuf_partition_sz, kvs);
             close_istream(file);
 
             *pn = n;
@@ -390,9 +389,9 @@ protected:
                         std::vector<std::vector<HyperEdge>>& hyperedges) {
         // calculate #hyperedges on the kvstore from all servers
         uint64_t total = 0;
-        uint64_t kvs_sz = floor(mem->kvstore_size() / num_partitions - sizeof(uint64_t), sizeof(sid_t));
+        uint64_t gbuf_partition_sz = floor(loader_mem.global_buf_sz / num_partitions - sizeof(uint64_t), sizeof(sid_t));
         for (int i = 0; i < num_partitions; i++) {
-            uint64_t* pn = reinterpret_cast<uint64_t*>(mem->kvstore() + (kvs_sz + sizeof(uint64_t)) * i);
+            uint64_t* pn = reinterpret_cast<uint64_t*>(loader_mem.global_buf + (gbuf_partition_sz + sizeof(uint64_t)) * i);
             total += *pn;  // the 1st uint64_t of kvs records #hyperedges
         }
 
@@ -409,7 +408,7 @@ protected:
         for (int tid = 0; tid < Global::num_engines; tid++) {
             int cnt = 0;  // per thread count for print progress
             for (int id = 0; id < num_partitions; id++) {
-                uint64_t* pn = reinterpret_cast<uint64_t*>(mem->kvstore() + (kvs_sz + sizeof(uint64_t)) * id);
+                uint64_t* pn = reinterpret_cast<uint64_t*>(loader_mem.global_buf + (gbuf_partition_sz + sizeof(uint64_t)) * id);
                 sid_t* kvs = reinterpret_cast<sid_t*>(pn + 1);
 
                 // the 1st uint64_t of kvs records #hyperedges
@@ -447,9 +446,9 @@ protected:
                         std::vector<std::vector<V2ETriple>>& v2etriples) {
         // calculate #v2etriples on the kvstore from all servers
         uint64_t total = 0;
-        uint64_t kvs_sz = floor(mem->kvstore_size() / num_partitions - sizeof(uint64_t), sizeof(V2ETriple));
+        uint64_t gbuf_partition_sz = floor(loader_mem.global_buf_sz / num_partitions - sizeof(uint64_t), sizeof(V2ETriple));
         for (int i = 0; i < num_partitions; i++) {
-            uint64_t* pn = reinterpret_cast<uint64_t*>(mem->kvstore() + (kvs_sz + sizeof(uint64_t)) * i);
+            uint64_t* pn = reinterpret_cast<uint64_t*>(loader_mem.global_buf + (gbuf_partition_sz + sizeof(uint64_t)) * i);
             total += *pn;  // the 1st uint64_t of kvs records #v2etriples
         }
 
@@ -466,7 +465,7 @@ protected:
         for (int tid = 0; tid < Global::num_engines; tid++) {
             int cnt = 0;  // per thread count for print progress
             for (int id = 0; id < num_partitions; id++) {
-                uint64_t* pn = reinterpret_cast<uint64_t*>(mem->kvstore() + (kvs_sz + sizeof(uint64_t)) * id);
+                uint64_t* pn = reinterpret_cast<uint64_t*>(loader_mem.global_buf + (gbuf_partition_sz + sizeof(uint64_t)) * id);
                 V2ETriple* kvs = reinterpret_cast<V2ETriple*>(pn + 1);
 
                 // the 1st uint64_t of kvs records #triples
@@ -552,8 +551,8 @@ protected:
     }
 
 public:
-    HyperGraphBaseLoader(int sid, Mem* mem, StringServer* str_server)
-        : sid(sid), mem(mem), str_server(str_server) {}
+    HyperGraphBaseLoader(int sid, LoaderMem loader_mem)
+        : sid(sid), loader_mem(loader_mem) {}
 
     virtual ~HyperGraphBaseLoader() {}
 
@@ -598,8 +597,8 @@ public:
 
 class HyperGraphPosixLoader : public HyperGraphBaseLoader {
 public:
-    HyperGraphPosixLoader(int sid, Mem* mem, StringServer* str_server)
-        : HyperGraphBaseLoader(sid, mem, str_server) {}
+    HyperGraphPosixLoader(int sid, LoaderMem loader_mem)
+        : HyperGraphBaseLoader(sid, loader_mem) {}
 
     ~HyperGraphPosixLoader() {}
 
@@ -638,8 +637,8 @@ public:
 
 class HyperGraphHDFSLoader : public HyperGraphBaseLoader {
 public:
-    HyperGraphHDFSLoader(int sid, Mem* mem, StringServer* str_server)
-        : HyperGraphBaseLoader(sid, mem, str_server) {}
+    HyperGraphHDFSLoader(int sid, LoaderMem loader_mem)
+        : HyperGraphBaseLoader(sid, loader_mem) {}
 
     ~HyperGraphHDFSLoader() {}
 

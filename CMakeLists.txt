@@ -8,7 +8,7 @@ project (wukong)
 cmake_minimum_required(VERSION 2.8)
 
 ## Use C++11 features
-add_definitions(-std=c++11)
+add_definitions(-std=c++17)
 
 
 ## Set dependencies
@@ -18,8 +18,9 @@ set(BOOST_LIB "${ROOT}/deps/boost_1_67_0-install/lib")
 ## Set include paths
 include_directories(deps/boost_1_67_0-install/include)
 include_directories(src)
-include_directories(rdma_lib)
-include_directories(deps/eigen-3.3.7)
+include_directories(deps)
+include_directories(deps/eigen)
+include_directories(deps/progress-cpp/include)
 include_directories(deps/googletest/googletest/include)
 
 ## Add sub-directories
@@ -27,7 +28,7 @@ add_subdirectory(${ROOT}/deps/googletest)
 
 
 ## Source code
-file(GLOB SOURCES "src/*.hpp" "rdma_lib/*.hpp")
+file(GLOB SOURCES "src/*.hpp")
 
 
 ## Set options (cached)
@@ -95,6 +96,29 @@ if(TRDF_MODE)
   add_definitions(-DTRDF_MODE)
 endif(TRDF_MODE)
 
+#### Support yacc & bison for sparql
+execute_process(
+  COMMAND bison -t -rall ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.y -d -b ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql
+)
+if(TRDF_MODE)
+  execute_process(
+    COMMAND flex -o ${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql_time.l
+  )
+else()
+  execute_process(
+    COMMAND flex -o ${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.l
+  )
+endif(TRDF_MODE)
+
+SET_SOURCE_FILES_PROPERTIES(${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c 
+  ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.tab.c 
+  PROPERTIES LANGUAGE CXX)
+
+add_library(sparql_lex 
+  ${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c 
+  ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.tab.c)
+
+
 #### 64-bit ID (32-bit ID by default)
 option (USE_DTYPE_64BIT "use 64-bit ID" OFF)
 if(USE_DTYPE_64BIT)
@@ -102,7 +126,7 @@ if(USE_DTYPE_64BIT)
 endif(USE_DTYPE_64BIT)
 
 
-set(WUKONG_LIBS ${WUKONG_LIBS} zmq rt tbb hwloc)
+set(WUKONG_LIBS ${WUKONG_LIBS} zmq rt tbb hwloc sparql_lex)
 
 ## Build Wukong
 target_link_libraries(wukong ${WUKONG_LIBS} ${BOOST_LIB}/libboost_mpi.a ${BOOST_LIB}/libboost_serialization.a ${BOOST_LIB}/libboost_program_options.a)

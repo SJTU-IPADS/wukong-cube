@@ -470,12 +470,6 @@ static void run_sparql(Proxy * proxy, int argc, char **argv)
     /// [single mode]
     if (sparql_vm.count("-f")) {
         std::string fname = sparql_vm["-f"].as<std::string>();
-        std::ifstream ifs(fname);
-        if (!ifs.good()) {
-            logstream(LOG_ERROR) << "Query file not found: " << fname << LOG_endl;
-            fail_to_parse(proxy, argc, argv); // invalid cmd
-            return;
-        }
 
         // NOTE: the options with default_value are always available.
         //       default value: mfactor(1), cnt(1), nopts(1), nlines(0)
@@ -548,7 +542,7 @@ static void run_sparql(Proxy * proxy, int argc, char **argv)
         SPARQLQuery reply;
         Monitor monitor;
         try {
-            proxy->run_single_query(ifs, fmt_stream, nopts, mfactor, snd2gpu,
+            proxy->run_single_query(fname, fmt_stream, nopts, mfactor, snd2gpu,
                                     cnt, nlines, ofname, reply, monitor);
         } catch (WukongException &ex) {
             logstream(LOG_ERROR) << "Query failed [ERRNO " << ex.code()

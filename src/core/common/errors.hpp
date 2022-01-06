@@ -42,11 +42,12 @@ enum {
     SETTING_ERROR,
     FIRST_PATTERN_ERROR,
     UNKNOWN_FILTER,
+    FILE_NOT_FOUND,
     ERROR_LAST
 };
 
 // error_messages
-const char *err_msgs[ERROR_LAST] = {
+static const char *err_msgs[ERROR_LAST] = {
     "Everythong is ok",
     "Something wrong happened",
     "Something wrong in the query syntax, fail to parse!",
@@ -59,7 +60,8 @@ const char *err_msgs[ERROR_LAST] = {
     "Tripple pattern should not start from unknown subject.",
     "You may change SETTING files to avoid this error. (e.g. global.hpp/config/...)",
     "Const_X_X or index_X_X must be the first pattern.",
-    "Unsupported filter type."};
+    "Unsupported filter type.",
+    "Query file not found."};
 
 // An exception
 struct WukongException : public std::exception {

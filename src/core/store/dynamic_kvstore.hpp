@@ -152,8 +152,9 @@ protected:
     uint64_t get_value_sz(const slot_t& slot) override { return blksz(slot.ptr.size + 1) * sizeof(ValueType); }
 
 public:
-    DynamicKVStore(int sid, Mem* mem, char* kv_addr, uint64_t kv_size)
-     : KVStore<KeyType, PtrType, ValueType>(sid, mem, kv_addr, kv_size) {
+    DynamicKVStore(int sid, KVMem kv_mem) : KVStore<KeyType, PtrType, ValueType>(sid, kv_mem) {
+        // Since tid of engines is not from 0, allocator should init num_threads.
+
 #ifdef USE_JEMALLOC
         value_allocator = new JeMalloc();
 #else
@@ -203,7 +204,7 @@ public:
                 } else {
                     add_pending_free(old_ptr);
                     ///FIXME: there is a bug about free here, but I can't fix it, so I replace free with add_pending_free
-                    //edge_allocator->free(e2b(old_ptr.off)); 
+                    //edge_allocator->free(e2b(old_ptr.off));
                 }
             } else {
                 // update size flag

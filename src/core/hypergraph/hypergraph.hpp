@@ -190,63 +190,81 @@ protected:
     void init_gstore(std::vector<std::vector<triple_t>>& triple_pso,
                      std::vector<std::vector<triple_t>>& triple_pos,
                      std::vector<std::vector<triple_attr_t>>& triple_sav) override {
-        uint64_t start, end;
+        // uint64_t start, end;
 
-        start = timer::get_usec();
-        #pragma omp parallel for num_threads(Global::num_engines)
-        for (int t = 0; t < Global::num_engines; t++) {
-            insert_normal(t, triple_pso[t], triple_pos[t]);
+        // start = timer::get_usec();
+        // #pragma omp parallel for num_threads(Global::num_engines)
+        // for (int t = 0; t < Global::num_engines; t++) {
+        //     insert_normal(t, triple_pso[t], triple_pos[t]);
 
-            // release memory
-            std::vector<triple_t>().swap(triple_pso[t]);
-            std::vector<triple_t>().swap(triple_pos[t]);
-        }
-        end = timer::get_usec();
-        logstream(LOG_INFO) << "[HyperGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
-                            << "for inserting normal data into gstore" << LOG_endl;
+        //     // release memory
+        //     std::vector<triple_t>().swap(triple_pso[t]);
+        //     std::vector<triple_t>().swap(triple_pos[t]);
+        // }
+        // end = timer::get_usec();
+        // logstream(LOG_INFO) << "[HyperGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
+        //                     << "for inserting normal data into gstore" << LOG_endl;
 
-        start = timer::get_usec();
-        #pragma omp parallel for num_threads(Global::num_engines)
-        for (int t = 0; t < Global::num_engines; t++) {
-            insert_attr(triple_sav[t], t);
+        // start = timer::get_usec();
+        // #pragma omp parallel for num_threads(Global::num_engines)
+        // for (int t = 0; t < Global::num_engines; t++) {
+        //     insert_attr(triple_sav[t], t);
 
-            // release memory
-            std::vector<triple_attr_t>().swap(triple_sav[t]);
-        }
-        end = timer::get_usec();
-        logstream(LOG_INFO) << "[HyperGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
-                            << "for inserting attributes into gstore" << LOG_endl;
+        //     // release memory
+        //     std::vector<triple_attr_t>().swap(triple_sav[t]);
+        // }
+        // end = timer::get_usec();
+        // logstream(LOG_INFO) << "[HyperGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
+        //                     << "for inserting attributes into gstore" << LOG_endl;
 
-        start = timer::get_usec();
-        insert_index();
-        end = timer::get_usec();
-        logstream(LOG_INFO) << "[HyperGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
-                            << "for inserting index data into gstore" << LOG_endl;
+        // start = timer::get_usec();
+        // insert_index();
+        // end = timer::get_usec();
+        // logstream(LOG_INFO) << "[HyperGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
+        //                     << "for inserting index data into gstore" << LOG_endl;
     }
 
 public:
-    HyperGraph(int sid, Mem* mem, StringServer* str_server)
-        : DGraph(sid, mem, str_server) {
-        char* rdf_addr = mem->kvstore();
-        uint64_t rdf_size = mem->kvstore_size() * RDF_RATIO / 100;
-        char* he_addr = mem->kvstore() + mem->kvstore_size() * RDF_RATIO / 100;
-        uint64_t he_size = mem->kvstore_size() * HE_RATIO / 100;
-        char* v2e_addr = mem->kvstore() + mem->kvstore_size() * (RDF_RATIO + HE_RATIO) / 100;
-        uint64_t v2e_size = mem->kvstore_size() * V2E_RATIO / 100;
-        this->gstore = std::make_shared<StaticKVStore<ikey_t, iptr_t, edge_t>>(sid, mem, rdf_addr, rdf_size);
-        this->hestore = std::make_shared<StaticKVStore<hekey_t, iptr_t, sid_t>>(sid, mem, he_addr, he_size);
-        this->v2estore = std::make_shared<StaticKVStore<hvkey_t, iptr_t, heid_t>>(sid, mem, v2e_addr, v2e_size);
+    HyperGraph(int sid, KVMem kv_mem)
+        : DGraph(sid, kv_mem) {
+        KVMem rdf_kv_mem = {
+            .kvs = kv_mem.kvs, 
+            .kvs_sz = kv_mem.kvs_sz * RDF_RATIO / 100, 
+            .rrbuf = kv_mem.rrbuf, 
+            .rrbuf_sz = kv_mem.rrbuf_sz
+        };
+
+        KVMem he_kv_mem = {
+            .kvs = kv_mem.kvs + kv_mem.kvs_sz * RDF_RATIO / 100, 
+            .kvs_sz = kv_mem.kvs_sz * HE_RATIO / 100, 
+            .rrbuf = kv_mem.rrbuf, 
+            .rrbuf_sz = kv_mem.rrbuf_sz
+        };
+
+        KVMem v2e_kv_mem = {
+            .kvs = kv_mem.kvs + kv_mem.kvs_sz * (RDF_RATIO + HE_RATIO) / 100, 
+            .kvs_sz = kv_mem.kvs_sz * V2E_RATIO / 100, 
+            .rrbuf = kv_mem.rrbuf, 
+            .rrbuf_sz = kv_mem.rrbuf_sz
+        };
+        this->gstore = std::make_shared<StaticKVStore<ikey_t, iptr_t, edge_t>>(sid, rdf_kv_mem);
+        this->hestore = std::make_shared<StaticKVStore<hekey_t, iptr_t, sid_t>>(sid, he_kv_mem);
+        this->v2estore = std::make_shared<StaticKVStore<hvkey_t, iptr_t, heid_t>>(sid, v2e_kv_mem);
     }
 
     void load(std::string dname) override {
         uint64_t start, end;
 
         std::shared_ptr<BaseLoader> loader;
+        LoaderMem loader_mem = {
+            .global_buf = kv_mem.kvs, .global_buf_sz = kv_mem.kvs_sz,
+            .local_buf = kv_mem.rrbuf, .local_buf_sz = kv_mem.rrbuf_sz
+        };
         // load from hdfs or posix file
         if (boost::starts_with(dname, "hdfs:"))
-            loader = std::make_shared<HDFSLoader>(sid, mem, str_server);
+            loader = std::make_shared<HDFSLoader>(sid, loader_mem);
         else
-            loader = std::make_shared<PosixLoader>(sid, mem, str_server);
+            loader = std::make_shared<PosixLoader>(sid, loader_mem);
 
         std::vector<std::vector<triple_t>> triple_pso;
         std::vector<std::vector<triple_t>> triple_pos;
@@ -261,9 +279,9 @@ public:
         std::shared_ptr<HyperGraphBaseLoader> hyperloader;
         // load from hdfs or posix file
         if (boost::starts_with(dname, "hdfs:"))
-            hyperloader = std::make_shared<HyperGraphHDFSLoader>(sid, mem, str_server);
+            hyperloader = std::make_shared<HyperGraphHDFSLoader>(sid, loader_mem);
         else
-            hyperloader = std::make_shared<HyperGraphPosixLoader>(sid, mem, str_server);
+            hyperloader = std::make_shared<HyperGraphPosixLoader>(sid, loader_mem);
 
         auto count_preds = [this](const std::string str_idx_file, bool is_attr = false) {
             std::string pred;

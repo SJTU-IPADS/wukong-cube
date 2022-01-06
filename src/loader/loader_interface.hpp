@@ -30,6 +30,17 @@
 
 namespace wukong {
 
+/* Memory region used during loading*/
+struct LoaderMem {
+    // NOTICE: we assume global_buf is the start of global RDMA memory region
+    // aggregate triples from all servers (global_buffer_sz*1)
+    char* global_buf;
+    uint64_t global_buf_sz;
+    // aggregate triples read by each thread (local_buffer_sz*thread_num)
+    char* local_buf;
+    uint64_t local_buf_sz;
+};
+
 class RDFLoaderInterface {
 public:
     virtual void load(const std::string& src,
