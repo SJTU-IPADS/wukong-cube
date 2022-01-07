@@ -209,8 +209,8 @@ main(int argc, char *argv[])
 #ifdef DYNAMIC_GSTORE
     wukong::DGraph * dgraph = new wukong::RDFGraph(sid, kv_mem, true);
 #else 
-    //wukong::DGraph * dgraph = new wukong::HyperGraph(sid, kv_mem);
-    wukong::DGraph * dgraph = new wukong::SegmentRDFGraph(sid, kv_mem);
+    wukong::DGraph * dgraph = new wukong::HyperGraph(sid, kv_mem);
+    //wukong::DGraph * dgraph = new wukong::SegmentRDFGraph(sid, kv_mem);
 #endif
     dgraph->load(wukong::Global::input_folder);
 

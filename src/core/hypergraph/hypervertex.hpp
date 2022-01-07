@@ -31,11 +31,8 @@
 
 namespace wukong {
 
-// Support 8 vertex role in hyperedge 
-// (Specfic for normal edge, IN:0/OUT:1)
-#define NBITS_IDX   3 
 // equal to the size of vertex/edge type
-#define NBITS_ETYPE  13 
+#define NBITS_ETYPE  16
 // 0: index vertex, ID: normal vertex/(hyperedge)
 #define NBITS_ID    48
 
@@ -49,14 +46,13 @@ enum { EDGE_TYPE = 0,
  * value: heid/tid list
  */
 struct hvkey_t {
-    uint64_t idx  : NBITS_IDX;  // index
-    uint64_t type : NBITS_ETYPE;   // vertex/edge type
     uint64_t id   : NBITS_ID;     // vertex/edge id
+    uint64_t type : NBITS_ETYPE;   // vertex/edge type
 
-    hvkey_t() : id(0), type(0), idx(0) {}
+    hvkey_t() : id(0), type(0) {}
 
-    hvkey_t(uint64_t id, uint64_t type, uint64_t idx) : id(id), type(type), idx(idx) {
-        assert((this->id == id) && (this->type == type) && (this->idx == idx));  // no key truncate
+    hvkey_t(uint64_t id, uint64_t type) : id(id), type(type) {
+        assert((this->id == id) && (this->type == type));  // no key truncate
     }
 
     hvkey_t& operator=(uint64_t index) {
@@ -73,20 +69,20 @@ struct hvkey_t {
     }
 
     bool operator==(const hvkey_t& key) const {
-        if ((id == key.id) && (type == key.type) && (idx == key.idx))
+        if ((id == key.id) && (type == key.type))
             return true;
         return false;
     }
 
     bool operator!=(const hvkey_t& key) const { return !(operator==(key)); }
 
-    bool is_empty() { return ((id == 0) && (type == 0) && (idx == 0)); }
+    bool is_empty() { return ((id == 0) && (type == 0)); }
 
-    void print_key() { std::cout << "[" << id << "|" << type << "|" << idx << "]" << std::endl; }
+    void print_key() { std::cout << "[" << id << "|" << type << "]" << std::endl; }
 
     std::string to_string() {
         std::ostringstream ss;
-        ss << "[" << id << "|" << type << "|" << idx << "]";
+        ss << "[" << id << "|" << type << "]";
         return ss.str();
     }
 
@@ -95,8 +91,6 @@ struct hvkey_t {
         r += id;
         r <<= NBITS_ETYPE;
         r += type;
-        r <<= NBITS_IDX;
-        r += idx;
         // the standard hash is too slow
         // (i.e., std::hash<uint64_t>()(r))
         return wukong::math::hash_u64(r);

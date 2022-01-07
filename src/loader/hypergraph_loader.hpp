@@ -211,9 +211,8 @@ protected:
 
         auto lambda = [&](std::istream& file, int localtid) {
             HyperEdge edge;
-            while (file >> edge.edge_type) {
-                ASSERT(edge_models.count(edge.edge_type));
-                int num_ids = edge_models[edge.edge_type].index_num;
+            int num_ids;
+            while (file >> edge.edge_type >> num_ids) {
                 edge.vertices.resize(num_ids);
                 for(int i = 0; i < num_ids; i++){
                     file >> edge.vertices[i];
@@ -297,8 +296,6 @@ protected:
                     triple.eid = edges[i][j].id;
                     triple.vid = edges[i][j].vertices[k];
                     triple.edge_type = edges[i][j].edge_type;
-                    // FIXME: should call HyperEdgeModel.get_index(int pos)
-                    triple.index = k;
                     send_v2e(localtid, dst_sid, triple);
                 }
             }
@@ -336,9 +333,8 @@ protected:
 
         auto lambda = [&](std::istream& file, uint64_t& n, uint64_t gbuf_partition_sz, sid_t* kvs) {
             HyperEdge edge;
-            while (file >> edge.edge_type) {
-                ASSERT(edge_models.count(edge.edge_type));
-                int num_ids = edge_models[edge.edge_type].index_num;
+            int num_ids;
+            while (file >> edge.edge_type >> num_ids) {
                 edge.vertices.resize(num_ids);
                 for(int i = 0; i < num_ids; i++){
                     file >> edge.vertices[i];
@@ -532,7 +528,7 @@ protected:
         }
     
         // Wukong generate a globally unique id for each hyperedge
-        // now we need to send all (vid, heid, index) triples to each machine
+        // now we need to send all (vid, heid) triples to each machine
         start = timer::get_usec();
         num_partitons = exchange_v2e_triples(edges);
         end = timer::get_usec();

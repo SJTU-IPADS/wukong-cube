@@ -285,13 +285,13 @@ private:
 
         if(pattern.top_half) {
             // retrieve hyperedge id
-            int index = pattern.const_index;
-            sid_t start = pattern.vars[index];
+            // [TODO]: FIX
+            sid_t start = pattern.vars[0];
             sid_t predicate = pattern.edge_type;
 
             uint64_t sz = 0;
             heid_t* heids = dynamic_cast<HyperGraph*>(graph)->get_edges_by_vertex(
-                    tid, start, predicate, index, sz);
+                    tid, start, predicate, sz);
             std::vector<heid_t> updated_result_table;
             for (uint64_t k = 0; k < sz; k++)
                 updated_result_table.push_back(heids[k]);
@@ -356,8 +356,8 @@ private:
         if(pattern.top_half) {
             std::cout << "Top half" << std::endl;
             // retrieve hyperedge id
-            int index = known_index;
-            ssid_t start = pattern.vars[index];
+            // TODO: FIX
+            ssid_t start = pattern.vars[0];
             sid_t predicate = pattern.edge_type;
 
             std::vector<sid_t> updated_result_table;
@@ -372,7 +372,7 @@ private:
                 if (cur != cached) { // new KNOWN
                     cached = cur;
                     heids = dynamic_cast<HyperGraph*>(graph)->get_edges_by_vertex(
-                                tid, cur, predicate, index, sz);
+                                tid, cur, predicate, sz);
                 }
 
                 for (uint64_t k = 0; k < sz; k++) {

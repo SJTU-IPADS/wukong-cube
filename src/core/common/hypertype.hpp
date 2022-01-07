@@ -33,22 +33,17 @@ using heid_t = uint64_t;
 class HyperEdgeModel {
 public:
     sid_t type_id;
-    int index_num;
-    std::vector<sid_t> index_type_hint;
-    std::vector<int> index_size;
 };
 
 struct V2ETriple {
     heid_t eid;
     sid_t vid;
     sid_t edge_type;
-    int index;
 
     bool operator==(const V2ETriple& triple) const {
         if ((eid == triple.eid) && 
             (vid == triple.vid) && 
-            (edge_type == triple.edge_type) && 
-            (index == triple.index)) {
+            (edge_type == triple.edge_type)) {
             return true;
         }
         return false;
@@ -88,12 +83,6 @@ struct v2etriple_sort {
 
         if (t1.vid == t2.vid &&
             t1.edge_type == t2.edge_type &&
-            t1.index < t2.index)
-            return true;
-
-        if (t1.vid == t2.vid &&
-            t1.edge_type == t2.edge_type &&
-            t1.index == t2.index &&
             t1.eid < t2.eid)
             return true;
 
