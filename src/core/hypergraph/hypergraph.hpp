@@ -55,11 +55,13 @@ using HEStore = KVStore<hekey_t, iptr_t, sid_t>;
  *  Empty key
  *  (0)   key = [  0 |           0 |     0]  value = [0, 0, ..]  i.e., init
  *  INDEX key/value pair
- *  (1)   key = [  0 |         pid |    IN]  value = [vid0, vid1, ..]  i.e., predicate-index
- *  (2)   key = [  0 |         tid |    IN]  value = [vid0, vid1, ..]  i.e., type-index
+ *  (1)   key = [  0 |        htid]  value = [vid0, vid1, ..]  i.e., HEDGE-vindex
+ *  (2)   key = [  0 |        htid]  value = [heid0, heid1, ..]  i.e., HEDGE-eindex
+ *  (3)   key = [  0 |         tid]  value = [vid0, vid1, ..]  i.e., VTYPE-index
  *  NORMAL key/value pair
- *  (6)   key = [vid |         pid | index]  value = [heid0, heid1, ..]  i.e., vid's ngbrs w/ predicate
- *  (7)   key = [vid | VERTEX_TYPE |   OUT]  value = [tid0, tid1, ..]  i.e., vid's all types
+ *  (6)   key = [vid |        htid]  value = [heid0, heid1, ..]  i.e., V2E-KV
+ *  (6)   key = [       heid      ]  value = [vid0, vid1, ..]  i.e., HEDGE-KV
+ *  (7)   key = [vid | VERTEX_TYPE]  value = [tid0, tid1, ..]  i.e., vid's all types
  */
 class HyperGraph : public DGraph {
 protected:
