@@ -33,6 +33,7 @@
 
 // engine
 #include "core/engine/sparql.hpp"
+#include "core/engine/hyper.hpp"
 #include "core/engine/rdf.hpp"
 #include "core/engine/msgr.hpp"
 #ifdef TRDF_MODE
@@ -66,6 +67,9 @@ private:
         if (bundle.type == SPARQL_QUERY) {
             SPARQLQuery r = bundle.get_sparql_query();
             sparql->execute_sparql_query(r);
+        } else if (bundle.type == HYPER_QUERY) {
+            HyperQuery r = bundle.get_hyper_query();
+            hyper_engine->execute_hyper_query(r);
         } else if (bundle.type == GSTORE_CHECK) {
             GStoreCheck r = bundle.get_gstore_check();
             rdf->execute_gstore_check(r);
@@ -108,12 +112,15 @@ public:
 #else
     SPARQLEngine *sparql;
 #endif
+    HyperEngine *hyper_engine;
     RDFEngine *rdf;
 
     bool at_work; // whether engine is at work or not
     uint64_t last_time; // busy or not (work-oblige)
 
     tbb::concurrent_queue<SPARQLQuery> runqueue; // task queue for sparql queries
+    // TODO-zyw: fix the scheduling
+    tbb::concurrent_queue<HyperQuery> hyper_runqueue; // task queue for hypergraph queries
 
     Engine(int sid, int tid, StringServer *str_server, DGraph *graph, Adaptor *adaptor)
         : sid(sid), tid(tid), last_time(timer::get_usec()),
@@ -126,6 +133,7 @@ public:
     #else
         sparql = new SPARQLEngine(sid, tid, str_server, graph, coder, msgr);
     #endif
+        hyper_engine = new HyperEngine(sid, tid, str_server, graph, coder, msgr);
         rdf = new RDFEngine(sid, tid, graph, coder, msgr);
     }
 

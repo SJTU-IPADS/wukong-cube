@@ -39,6 +39,8 @@
 #include "core/common/type.hpp"
 #include "core/common/hypertype.hpp"
 
+#include "core/hyperquery/query.hpp"
+
 #include "core/store/vertex.hpp"
 
 // utils
@@ -1474,7 +1476,7 @@ BOOST_CLASS_TRACKING(wukong::RDFLoad, boost::serialization::track_never);
 
 namespace wukong {
 
-enum req_type { SPARQL_QUERY = 0, DYNAMIC_LOAD = 1, GSTORE_CHECK = 2, SPARQL_HISTORY = 3 };
+enum req_type { SPARQL_QUERY = 0, DYNAMIC_LOAD = 1, GSTORE_CHECK = 2, SPARQL_HISTORY = 3, HYPER_QUERY = 4 };
 
 /**
  * Bundle to be sent by network, with data type labeled
@@ -1500,6 +1502,14 @@ public:
     Bundle(const Bundle &b): type(b.type), data(b.data) { }
 
     Bundle(const SPARQLQuery &r): type(SPARQL_QUERY) {
+        std::stringstream ss;
+        boost::archive::binary_oarchive oa(ss);
+
+        oa << r;
+        data = ss.str();
+    }
+
+    Bundle(const HyperQuery &r): type(HYPER_QUERY) {
         std::stringstream ss;
         boost::archive::binary_oarchive oa(ss);
 
@@ -1540,6 +1550,18 @@ public:
 
         boost::archive::binary_iarchive ia(ss);
         SPARQLQuery result;
+        ia >> result;
+        return result;
+    }
+
+    HyperQuery get_hyper_query() const {
+        ASSERT(type == HYPER_QUERY);
+
+        std::stringstream ss;
+        ss << data;
+
+        boost::archive::binary_iarchive ia(ss);
+        HyperQuery result;
         ia >> result;
         return result;
     }

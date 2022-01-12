@@ -48,7 +48,7 @@ using ssid_t = int32_t;  // signed string id
 using attr_t = boost::variant<int, double, float>;
 
 enum dir_t { IN = 0, OUT, CORUN }; // direction: IN=0, OUT=1, and optimization hints
-enum data_type { SID_t = 0, INT_t, HEID_t, FLOAT_t, DOUBLE_t, TIME_t };
+enum data_type { SID_t = 0, HEID_t, INT_t, FLOAT_t, DOUBLE_t, TIME_t };
 
 struct triple_t {
     sid_t s; // subject

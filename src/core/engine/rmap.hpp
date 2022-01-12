@@ -25,6 +25,7 @@
 #include <boost/unordered_map.hpp>
 
 #include "core/sparql/query.hpp"
+#include "core/hyperquery/query.hpp"
 
 namespace wukong {
 
@@ -121,5 +122,59 @@ public:
         return r;
     }
 };
+
+// The map is used to collect replies from sub_queries in fork-join execution mode
+class HyperRMap {
+private:
+    struct Item {
+        int cnt; // #sub-queries
+        HyperQuery parent;
+        HyperQuery reply;
+    };
+
+    boost::unordered_map<int, Item> internal_map;
+
+public:
+    void put_parent_request(HyperQuery &r, int cnt) {
+        logstream(LOG_DEBUG) << "add parent-qid=" << r.qid
+                             << " and #sub-queries=" << cnt << LOG_endl;
+
+        // not exist
+        ASSERT(internal_map.find(r.qid) == internal_map.end());
+
+        Item d = { .cnt = cnt, .parent = r, };
+        //d.cnt = cnt;
+        //d.parent = r;
+        internal_map[r.qid] = d;
+    }
+
+    void put_reply(HyperQuery &r) {
+        // exist
+        ASSERT(internal_map.find(r.pqid) != internal_map.end());
+
+        Item &d = internal_map[r.pqid];
+        HyperQuery::Result &whole = d.reply.result;
+        HyperQuery::Result &part = r.result;
+        d.cnt--;
+
+        //whole.append_result(part);
+    }
+
+    bool is_ready(int qid) {
+        return internal_map[qid].cnt == 0;
+    }
+
+    HyperQuery get_reply(int qid) {
+        HyperQuery r = internal_map[qid].parent;
+        HyperQuery &reply = internal_map[qid].reply;
+
+        // TODO-zyw
+
+        internal_map.erase(qid);
+        logstream(LOG_DEBUG) << "erase parent-qid=" << qid << LOG_endl;
+        return r;
+    }
+};
+
 
 } // namespace wukong
