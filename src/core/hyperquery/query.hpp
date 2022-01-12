@@ -214,16 +214,16 @@ public:
         enum vstat { KNOWN_VAR = 0, UNKNOWN_VAR, CONST_VAR }; // variable stat
 
         // EXT = [ TYPE:16 | COL:16 ]
-        static const int NBITS_TYPE = 16;   // column type
-        static const int NBITS_COL = 16;   // column number
+        static const int TYPE_BITS = 16;   // column type
+        static const int COL_BITS = 16;   // column number
 
-        // Init COL value with NO_RESULT
-        static const int NO_RESULT = ((1 << NBITS_COL) - 1);
+        // Init COL value with NO_RESULT_COL
+        static const int NO_RESULT_COL = ((1 << COL_BITS) - 1);
 
         // conversion between col and ext
-        int col2ext(int col, int type) { return ((type << NBITS_COL) | col); }
-        int ext2col(int ext) { return (ext & ((1 << NBITS_COL) - 1)); }
-        int ext2type(int ext) { return ((ext >> NBITS_COL) & ((1 << NBITS_COL) - 1)); }
+        int col2ext(int col, int type) { return ((type << COL_BITS) | col); }
+        int ext2col(int ext) { return (ext & ((1 << COL_BITS) - 1)); }
+        int ext2type(int ext) { return ((ext >> COL_BITS) & ((1 << COL_BITS) - 1)); }
 
         // metadata
         std::vector<int> col_nums;
@@ -256,7 +256,7 @@ public:
         vstat var_stat(ssid_t var) {
             if (var >= 0)
                 return CONST_VAR;
-            else if (var2col(var) == NO_RESULT)
+            else if (var2col(var) == NO_RESULT_COL)
                 return UNKNOWN_VAR;
             else
                 return KNOWN_VAR;
@@ -270,14 +270,14 @@ public:
             // the number of variables is known before calling var2col()
             ASSERT(nvars > 0);
             if (v2c_map.size() == 0)
-                v2c_map.resize(nvars, NO_RESULT); // init
+                v2c_map.resize(nvars, NO_RESULT_COL); // init
 
             // calculate idx
             int idx = - (var + 1);
             ASSERT(idx < nvars && idx >= 0);
 
             // variable should not be set
-            ASSERT(v2c_map[idx] == NO_RESULT);
+            ASSERT(v2c_map[idx] == NO_RESULT_COL);
             v2c_map[idx] = col2ext(col, type);
         }
 
@@ -289,7 +289,7 @@ public:
             // the number of variables is known before calling var2col()
             ASSERT(nvars > 0);
             if (v2c_map.size() == 0)
-                v2c_map.resize(nvars, NO_RESULT); // init
+                v2c_map.resize(nvars, NO_RESULT_COL); // init
 
             // calculate idx
             int idx = - (var + 1);
@@ -306,7 +306,7 @@ public:
             // the number of variables is known before calling var2col()
             ASSERT(nvars > 0);
             if (v2c_map.size() == 0) // init
-                v2c_map.resize(nvars, NO_RESULT);
+                v2c_map.resize(nvars, NO_RESULT_COL);
 
             // calculate idx
             int idx = - (var + 1);
@@ -440,7 +440,7 @@ public:
         : pattern_group(g) {
         result.nvars = nvars;
         result.required_vars = required_vars;
-        result.v2c_map.resize(nvars, Result::NO_RESULT);
+        result.v2c_map.resize(nvars, Result::NO_RESULT_COL);
     }
 
     // return the current pattern

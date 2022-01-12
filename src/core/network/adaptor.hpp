@@ -23,8 +23,7 @@
 #pragma once
 
 #include "core/common/global.hpp"
-
-#include "core/sparql/query.hpp"
+#include "core/common/bundle.hpp"
 
 // network
 #include "tcp_adaptor.hpp"
