@@ -1,0 +1,3 @@
+SELECT * WHERE {
+	<http://www.edu/CoAuthor0> buildin:vertices ?X
+}
