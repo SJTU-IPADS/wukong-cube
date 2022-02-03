@@ -64,23 +64,46 @@ private:
 
 public:
     enum SQState { SQ_PATTERN = 0, SQ_UNION, SQ_FILTER, SQ_OPTIONAL, SQ_FINAL, SQ_REPLY };
-    enum PatternType { GV, GE, V2E, E2V, MV2E, ME2V, V2V, E2E };
+    enum PatternType { GV, GE, GP, V2E, E2V, E2E_ITSCT, E2E_CT, E2E_IN, V2V, LAST_TYPE};
 
+
+    // hyper pattern
     class Pattern {
     private:
         friend class boost::serialization::access;
 
     public:
         PatternType type;
-
-        // hyper pattern
+        
+        // multi input vars and single output var
         std::vector<ssid_t> input_vars;
         ssid_t output_var;
 
-        Pattern(std::vector<ssid_t> input_vars, ssid_t output_var):
-            input_vars(input_vars), output_var(output_var) { }
+        // other constraints of the hyper pattern
+        sid_t bind_node = 0;
+        uint32_t k = 0;
+
+        Pattern() {}
+
+        Pattern(PatternType type, std::vector<ssid_t> input_vars, ssid_t output_var, sid_t bind = 0, uint32_t k = 0):
+                type(type), input_vars(input_vars), output_var(output_var), bind_node(bind), k(k) {
+            ASSERT_GT(input_vars.size(), 0);
+            ASSERT_LT(output_var, 0);
+            ASSERT_GE(bind_node, 0);
+            ASSERT_GE(k, 0);
+        }
     
-        void print_pattern() { }
+        void print_pattern() const {
+            static const char *PatternTypeName[9] = { "GV", "GE", "GP", "V2E", "E2V", "E2E_ITSCT", "E2E_CT", "E2E_IN", "V2V"};
+
+            logstream(LOG_INFO) << "\t[ ";
+            for (auto &&var : input_vars)
+                logstream(LOG_INFO) << var << " "; 
+            logstream(LOG_INFO) << " ]\t" << PatternTypeName[type] 
+                                << "( bind_node = " << bind_node
+                                << ", k = " << k 
+                                << " )\t==>\t" <<output_var << LOG_endl; 
+        }
     };
 
     class PatternGroup {
@@ -93,7 +116,7 @@ public:
         void print_group() const {
             logstream(LOG_INFO) << "patterns[" << patterns.size() << "]:" << LOG_endl;
             for (auto const &p : patterns)
-                logstream(LOG_INFO) << "Pattern" << LOG_endl;
+                p.print_pattern();
         }
 
         // used to calculate dst_sid
@@ -497,7 +520,7 @@ public:
         return false;
     }
 
-    void print_sparql_query() {
+    void print_hyper_query() {
         logstream(LOG_INFO) << "HyperQuery"
                             << "[ QID=" << qid << " | PQID=" << pqid << " | MT_TID=" << mt_tid << " ]"
                             << LOG_endl;
