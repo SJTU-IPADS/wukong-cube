@@ -96,27 +96,39 @@ if(TRDF_MODE)
   add_definitions(-DTRDF_MODE)
 endif(TRDF_MODE)
 
+#### Support hyper graph feature
+option (HYPER_MODE "support hyper queries" ON)
+if(HYPER_MODE)
+  add_definitions(-DHYPER_MODE)
+endif(HYPER_MODE)
+
 #### Support yacc & bison for sparql
+if(HYPER_MODE)
+  set(PARSER_DIR ${PROJECT_SOURCE_DIR}/src/core/hyperquery)
+else()
+  set(PARSER_DIR ${PROJECT_SOURCE_DIR}/src/core/sparql)
+endif(HYPER_MODE)
+
 execute_process(
-  COMMAND bison -t -rall ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.y -d -b ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql
+  COMMAND bison -t -rall ${PARSER_DIR}/sparql.y -d -b ${PARSER_DIR}/sparql
 )
 if(TRDF_MODE)
   execute_process(
-    COMMAND flex -o ${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql_time.l
+    COMMAND flex -o ${PARSER_DIR}/lex.yy.c ${PARSER_DIR}/sparql_time.l
   )
 else()
   execute_process(
-    COMMAND flex -o ${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.l
+    COMMAND flex -o ${PARSER_DIR}/lex.yy.c ${PARSER_DIR}/sparql.l
   )
 endif(TRDF_MODE)
 
-SET_SOURCE_FILES_PROPERTIES(${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c 
-  ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.tab.c 
+SET_SOURCE_FILES_PROPERTIES(${PARSER_DIR}/lex.yy.c 
+  ${PARSER_DIR}/sparql.tab.c 
   PROPERTIES LANGUAGE CXX)
 
 add_library(sparql_lex 
-  ${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c 
-  ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.tab.c)
+  ${PARSER_DIR}/lex.yy.c 
+  ${PARSER_DIR}/sparql.tab.c)
 
 
 #### 64-bit ID (32-bit ID by default)
@@ -131,7 +143,7 @@ set(WUKONG_LIBS ${WUKONG_LIBS} zmq rt tbb hwloc sparql_lex)
 ## Build Wukong
 target_link_libraries(wukong ${WUKONG_LIBS} ${BOOST_LIB}/libboost_mpi.a ${BOOST_LIB}/libboost_serialization.a ${BOOST_LIB}/libboost_program_options.a)
 
-file(GLOB TS  "${ROOT}/tests/*.cc")
+file(GLOB TS  "${ROOT}/tests/test_sample.cc")
 add_executable(coretest ${TS})
 target_link_libraries(coretest gtest gtest_main ${WUKONG_LIBS} ${BOOST_LIB}/libboost_mpi.a ${BOOST_LIB}/libboost_serialization.a ${BOOST_LIB}/libboost_program_options.a)
 
