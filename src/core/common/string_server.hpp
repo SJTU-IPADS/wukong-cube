@@ -64,6 +64,8 @@ public:
     uint64_t next_index_id;
     uint64_t next_normal_id;
 
+    StringServer(): next_index_id(0), next_normal_id(0) {}
+
     StringServer(std::string dname) {
         uint64_t start = timer::get_usec();
 
@@ -82,7 +84,7 @@ public:
             load_from_posixfs(dname);
 
         uint64_t end = timer::get_usec();
-        logstream(LOG_INFO) << "loading string server is finished ("
+        logstream(LOG_INFO) << "loading string server is finished, ends up with " << simap.size() << " mappings ("
                             << (end - start) / 1000 << " ms)" << LOG_endl;
     }
 
@@ -152,8 +154,7 @@ private:
                 std::ifstream file(fname.c_str());
                 std::string str;
                 sid_t id, num, tmp;
-                while (file >> str >> id >> num) {
-                    for(int i = 0; i < num; i++) file >> tmp;
+                while (file >> str >> id) {
                     add(str, id);  // add a new ID-STRING (bi-direction) pair
                 }
                 next_index_id = ++id;
@@ -218,8 +219,7 @@ private:
                 std::ifstream file(fname.c_str());
                 std::string str;
                 sid_t id, num, tmp;
-                while (file >> str >> id >> num) {
-                    for(int i = 0; i < num; i++) file >> tmp;
+                while (file >> str >> id) {
                     add(str, id);  // add a new ID-STRING (bi-direction) pair
                 }
                 next_index_id = ++id;
