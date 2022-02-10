@@ -165,7 +165,7 @@ public:
 
 	// Register the new prefix
 	void addPrefix(char* name,char* iri){   
-        logstream(LOG_INFO) << "add prefix" << LOG_endl; 
+        logstream(LOG_DEBUG) << "[HyperParser] add prefix" << LOG_endl; 
         // Cut the real prefix
         int pos = 0;
         for(int i=0;i<strlen(name);++i){
@@ -186,7 +186,7 @@ public:
 
 	// Register the projection 
 	void addProjection(char* variable){
-        logstream(LOG_INFO) << "add projection" << LOG_endl; 
+        logstream(LOG_DEBUG) << "[HyperParser] add projection" << LOG_endl; 
         //remove ?/$
         variable = variable+1;
 
@@ -204,7 +204,7 @@ public:
 
     // Make PatternGroup 
     PatternGroup* makePatternGroup(Pattern* pattern, PatternGroup* oldPatternGroup){
-        logstream(LOG_INFO) << "make pattern group" << LOG_endl; 
+        logstream(LOG_DEBUG) << "[HyperParser] make pattern group" << LOG_endl; 
         if (!pattern) throw ParserException("Unexpected error making PatternGroup\n");
 
         // if the first pattern allocate a new PatternGroup
@@ -223,7 +223,7 @@ public:
 
 	// Register the projection 
 	Pattern* addPattern(ElementList* inputs, Element* output, int suffix){
-        logstream(LOG_INFO) << "add pattern" << LOG_endl; 
+        logstream(LOG_DEBUG) << "[HyperParser] add pattern" << LOG_endl; 
     	switch(suffix){
             case Suffix_Dot: case Suffix_Blank:{
                 Pattern* p = new Pattern(ty, *inputs, *output, bind_node, k_meta);
@@ -238,7 +238,7 @@ public:
 	}
 
     void addPatternMeta(int type, Element* bind, int k) {
-        logstream(LOG_INFO) << "add pattern meta" << LOG_endl; 
+        logstream(LOG_DEBUG) << "[HyperParser] add pattern meta" << LOG_endl; 
         ty = static_cast<PatternType>(type);
         k_meta = k;
         if (bind) {
@@ -248,7 +248,7 @@ public:
     }
 
     ElementList* makeElementList(Element* newElement, ElementList* oldElementList) {
-        logstream(LOG_INFO) << "make element list" << LOG_endl; 
+        logstream(LOG_DEBUG) << "[HyperParser] make element list" << LOG_endl; 
         if (!newElement) throw ParserException("Unexpected error making ElementList\n");
 
         // if the first element allocate a new ElementList
@@ -265,7 +265,7 @@ public:
 
 	// Deal with variable pattern element
 	Element* makeVariableElement(char* tokenValue){
-        logstream(LOG_INFO) << "make var element" << LOG_endl; 
+        logstream(LOG_DEBUG) << "[HyperParser] make var element" << LOG_endl; 
 		Element* result = new Element();
         result->type = Element::Variable;
         tokenValue = tokenValue+1;
@@ -275,7 +275,7 @@ public:
 
 	// Deal with iri pattern element
 	Element* makeIriElement(char* iriValue, bool customGrammar){
-        logstream(LOG_INFO) << "make iri element" << LOG_endl; 
+        logstream(LOG_DEBUG) << "make iri element" << LOG_endl; 
 		Element* result = new Element();
 
         //remove < >
@@ -290,7 +290,7 @@ public:
 
 	// Deal with alias iri pattern element
 	Element* makePrefixIriElement(char* prefix,char* suffix,bool customGrammar){
-        logstream(LOG_INFO) << "add prefix iri element" << LOG_endl; 
+        logstream(LOG_DEBUG) << "[HyperParser] add prefix iri element" << LOG_endl; 
 		Element* result=new Element();
         // Cut the real prefix
         int pos = 0;
