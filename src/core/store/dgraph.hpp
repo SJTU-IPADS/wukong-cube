@@ -264,6 +264,15 @@ public:
         return r;
     }
 
+    // get heid list by vid and hyper type
+    virtual heid_t* get_heids_by_vertex_and_type(int tid, sid_t vid, sid_t edge_type, uint64_t& sz) {}
+    // get heid list by hyper type
+    virtual heid_t* get_heids_by_type(int tid, sid_t edge_type, uint64_t& sz) {}
+    // get hyper edge content by heid
+    virtual sid_t* get_edge_by_heid(int tid, heid_t eid, uint64_t& sz) {}
+    // get heid list by vid and hyper type
+    virtual std::vector<std::pair<sid_t*, uint64_t>> get_edges_by_type(int tid, sid_t edge_type) {}
+
     virtual int dynamic_load_data(std::string dname, bool check_dup) {}
 
     virtual void print_graph_stat() {

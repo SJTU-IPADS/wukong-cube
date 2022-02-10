@@ -290,7 +290,7 @@ private:
             sid_t predicate = pattern.edge_type;
 
             uint64_t sz = 0;
-            heid_t* heids = dynamic_cast<HyperGraph*>(graph)->get_edges_by_vertex(
+            heid_t* heids = dynamic_cast<HyperGraph*>(graph)->get_heids_by_vertex_and_type(
                     tid, start, predicate, sz);
             std::vector<heid_t> updated_result_table;
             for (uint64_t k = 0; k < sz; k++)
@@ -316,7 +316,7 @@ private:
                 heid_t cur = res.heid_res_table.get_row_col(
                         i, res.var2col(edge_var));
 
-                vids = dynamic_cast<HyperGraph*>(graph)->get_edges_by_id(
+                vids = dynamic_cast<HyperGraph*>(graph)->get_edge_by_heid(
                     tid, cur, sz);
 
                 assert(sz == pattern.vars.size()+1);
@@ -371,7 +371,7 @@ private:
                 sid_t cur = res.get_row_col(i, res.var2col(start));
                 if (cur != cached) { // new KNOWN
                     cached = cur;
-                    heids = dynamic_cast<HyperGraph*>(graph)->get_edges_by_vertex(
+                    heids = dynamic_cast<HyperGraph*>(graph)->get_heids_by_vertex_and_type(
                                 tid, cur, predicate, sz);
                 }
 
@@ -404,7 +404,7 @@ private:
                 heid_t cur = res.heid_res_table.get_row_col(
                         i, res.var2col(edge_var));
 
-                vids = dynamic_cast<HyperGraph*>(graph)->get_edges_by_id(
+                vids = dynamic_cast<HyperGraph*>(graph)->get_edge_by_heid(
                     tid, cur, sz);
 
                 assert(sz == pattern.vars.size());

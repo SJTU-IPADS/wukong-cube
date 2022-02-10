@@ -550,9 +550,27 @@ public:
     // return total num of vertex types
     inline int get_num_vertex_types() const { return this->vertex_types.size(); }
 
+    // return all edge types
     inline std::vector<HyperEdgeModel> get_edge_types() const { return this->edge_types; }
+    // return all vertex types
     inline std::vector<sid_t> get_vertex_types() const { return this->vertex_types; }
 
+    // get heid list by vid and hyper type
+    heid_t* get_heids_by_vertex_and_type(int tid, sid_t vid, sid_t edge_type, uint64_t& sz) {
+        return v2estore->get_values(tid, PARTITION(vid), hvkey_t(vid, edge_type), sz);
+    }
+   
+    // get heid list by hyper type
+    heid_t* get_heids_by_type(int tid, sid_t edge_type, uint64_t& sz) {
+        return v2estore->get_values(tid, this->sid, hvkey_t(0, edge_type), sz);
+    }
+
+    // get hyper edge content by heid
+    sid_t* get_edge_by_heid(int tid, heid_t eid, uint64_t& sz) {
+        return hestore->get_values(tid, PARTITION(eid), hekey_t(eid), sz);
+    }
+
+    // get heid list by vid and hyper type
     std::vector<std::pair<sid_t*, uint64_t>> get_edges_by_type(int tid, sid_t edge_type) {
         // index vertex should be 0 and always local
         std::vector<std::pair<sid_t*, uint64_t>> result;
@@ -565,14 +583,6 @@ public:
             result.push_back(std::make_pair(vids, sz));
         }
         return result;
-    }
-
-    heid_t* get_edges_by_vertex(int tid, sid_t vid, sid_t edge_type, uint64_t& sz) {
-        return v2estore->get_values(tid, PARTITION(vid), hvkey_t(vid, edge_type), sz);
-    }
-
-    sid_t* get_edges_by_id(int tid, heid_t eid, uint64_t& sz) {
-        return hestore->get_values(tid, PARTITION(eid), hekey_t(eid), sz);
     }
 
     virtual int dynamic_load_data(std::string dname, bool check_dup) {}
