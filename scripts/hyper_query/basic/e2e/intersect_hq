@@ -1,5 +1,0 @@
-PREFIX dblp: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-
-SELECT * WHERE {
-	<http://www.edu/CoAuthor0> buildin:intersectEdges(dblp:CoAuthor, 2) ?E_CO
-}

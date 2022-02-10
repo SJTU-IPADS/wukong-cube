@@ -1,6 +1,0 @@
-PREFIX dblp: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-
-SELECT * WHERE {
-	?E_CO buildin:etype dblp:CoAuthor
-	?E_CO buildin:vertices ?X
-}
