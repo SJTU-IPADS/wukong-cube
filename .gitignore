@@ -2,10 +2,14 @@
 *~
 *.exe
 *.swp
+*.yy.c
+*.tab*
+*output*
 build/
-script/config
-script/core.bind
-script/mpd.hosts
+deps/
+scripts/config
+scripts/core.bind
+scripts/mpd.hosts
 docs/_build/
 .vs/
 .vscode/
@@ -13,3 +17,4 @@ docs/_build/
 .settings/
 .cproject
 .project
+scripts/hyper_data
