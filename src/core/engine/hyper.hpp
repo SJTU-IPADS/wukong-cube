@@ -141,7 +141,13 @@ private:
         case HyperQuery::PatternType::V2V:
             op_get_v2v(query, op);
             break;
-        case HyperQuery::PatternType::E2E:
+        case HyperQuery::PatternType::E2E_ITSCT:
+            op_get_e2e(query, op);
+            break;
+        case HyperQuery::PatternType::E2E_CT:
+            op_get_e2e(query, op);
+            break;
+        case HyperQuery::PatternType::E2E_IN:
             op_get_e2e(query, op);
             break;
         default:
