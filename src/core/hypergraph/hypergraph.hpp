@@ -53,23 +53,23 @@ using HEStore = KVStore<hekey_t, iptr_t, sid_t>;
  *  TYPE_ID = 1, PREDICATE_ID = 0, OUT = 1, IN = 0
  *
  *  Empty key
- *  (0)   key = [  0 |           0 |     0]  value = [0, 0, ..]  i.e., init
+ *  (0)   key = [     0 |           0]  value = [0, 0, ..]             i.e., init
  *  INDEX key/value pair
- *  (1)   key = [  0 |        htid]  value = [vid0, vid1, ..]  i.e., HEDGE-vindex
- *  (2)   key = [  0 |        htid]  value = [heid0, heid1, ..]  i.e., HEDGE-eindex
- *  (3)   key = [  0 |         tid]  value = [vid0, vid1, ..]  i.e., VTYPE-index
+ *  (1)   key = [     0 |        htid]  value = [vid0, vid1, ..]       i.e., HEDGE-vindex
+ *  (2)   key = [     0 |        htid]  value = [heid0, heid1, ..]     i.e., HTYPE-index
+ *  (3)   key = [     0 |         tid]  value = [vid0, vid1, ..]       i.e., VTYPE-index
  *  NORMAL key/value pair
- *  (6)   key = [vid |        htid]  value = [heid0, heid1, ..]  i.e., V2E-KV
- *  (6)   key = [       heid      ]  value = [vid0, vid1, ..]  i.e., HEDGE-KV
- *  (7)   key = [vid | VERTEX_TYPE]  value = [tid0, tid1, ..]  i.e., vid's all types
+ *  (6)   key = [   vid |        htid]  value = [heid0, heid1, ..]     i.e., V2E-KV
+ *  (6)   key = [                heid]  value = [vid0, vid1, ..]       i.e., HEDGE-KV
+ *  (7)   key = [   vid | VERTEX_TYPE]  value = [tid0, tid1, ..]       i.e., vid's all types
+ *  (7)   key = [  heid |  HYPER_TYPE]  value = [htid0, htid1, ..]     i.e., heid's all types
  */
 class HyperGraph : public DGraph {
 protected:
     using tbb_hedge_hash_map = tbb::concurrent_hash_map<sid_t, std::vector<heid_t>>;
 
-    const int RDF_RATIO = 60;
-    const int HE_RATIO = 20;
-    const int V2E_RATIO = 20;
+    const int HE_RATIO = 50;
+    const int V2E_RATIO = 50;
 
     // all hyperedge types
     std::vector<HyperEdgeModel> edge_types;
@@ -400,27 +400,27 @@ protected:
 public:
     HyperGraph(int sid, KVMem kv_mem)
         : DGraph(sid, kv_mem) {
-        KVMem rdf_kv_mem = {
-            .kvs = kv_mem.kvs, 
-            .kvs_sz = kv_mem.kvs_sz * RDF_RATIO / 100, 
-            .rrbuf = kv_mem.rrbuf, 
-            .rrbuf_sz = kv_mem.rrbuf_sz
-        };
-
+        // KVMem rdf_kv_mem = {
+        //     .kvs = kv_mem.kvs, 
+        //     .kvs_sz = kv_mem.kvs_sz * RDF_RATIO / 100, 
+        //     .rrbuf = kv_mem.rrbuf, 
+        //     .rrbuf_sz = kv_mem.rrbuf_sz
+        // };
+        
         KVMem he_kv_mem = {
-            .kvs = kv_mem.kvs + kv_mem.kvs_sz * RDF_RATIO / 100, 
+            .kvs = kv_mem.kvs, 
             .kvs_sz = kv_mem.kvs_sz * HE_RATIO / 100, 
             .rrbuf = kv_mem.rrbuf, 
             .rrbuf_sz = kv_mem.rrbuf_sz
         };
 
         KVMem v2e_kv_mem = {
-            .kvs = kv_mem.kvs + kv_mem.kvs_sz * (RDF_RATIO + HE_RATIO) / 100, 
+            .kvs = kv_mem.kvs + kv_mem.kvs_sz * HE_RATIO / 100, 
             .kvs_sz = kv_mem.kvs_sz * V2E_RATIO / 100, 
             .rrbuf = kv_mem.rrbuf, 
             .rrbuf_sz = kv_mem.rrbuf_sz
         };
-        this->gstore = std::make_shared<StaticKVStore<ikey_t, iptr_t, edge_t>>(sid, rdf_kv_mem);
+        // this->gstore = std::make_shared<StaticKVStore<ikey_t, iptr_t, edge_t>>(sid, rdf_kv_mem);
         this->hestore = std::make_shared<StaticKVStore<hekey_t, iptr_t, sid_t>>(sid, he_kv_mem);
         this->v2estore = std::make_shared<StaticKVStore<hvkey_t, iptr_t, heid_t>>(sid, v2e_kv_mem);
     }
@@ -428,34 +428,30 @@ public:
     void load(std::string dname) override {
         uint64_t start, end;
 
-        std::shared_ptr<BaseLoader> loader;
         LoaderMem loader_mem = {
             .global_buf = kv_mem.kvs, .global_buf_sz = kv_mem.kvs_sz,
             .local_buf = kv_mem.rrbuf, .local_buf_sz = kv_mem.rrbuf_sz
         };
+
+        // ========== RDF loader ==========
         // load from hdfs or posix file
-        if (boost::starts_with(dname, "hdfs:"))
-            loader = std::make_shared<HDFSLoader>(sid, loader_mem);
-        else
-            loader = std::make_shared<PosixLoader>(sid, loader_mem);
+        // std::shared_ptr<BaseLoader> loader;
+        // if (boost::starts_with(dname, "hdfs:"))
+        //     loader = std::make_shared<HDFSLoader>(sid, loader_mem);
+        // else
+        //     loader = std::make_shared<PosixLoader>(sid, loader_mem);
 
-        std::vector<std::vector<triple_t>> triple_pso;
-        std::vector<std::vector<triple_t>> triple_pos;
-        std::vector<std::vector<triple_attr_t>> triple_sav;
+        // std::vector<std::vector<triple_t>> triple_pso;
+        // std::vector<std::vector<triple_t>> triple_pos;
+        // std::vector<std::vector<triple_attr_t>> triple_sav;
 
-        start = timer::get_usec();
-        loader->load(dname, triple_pso, triple_pos, triple_sav);
-        end = timer::get_usec();
-        logstream(LOG_INFO) << "[Loader] #" << sid << ": " << (end - start) / 1000 << "ms "
-                            << "for loading triples from disk to memory." << LOG_endl;
+        // start = timer::get_usec();
+        // loader->load(dname, triple_pso, triple_pos, triple_sav);
+        // end = timer::get_usec();
+        // logstream(LOG_INFO) << "[Loader] #" << sid << ": " << (end - start) / 1000 << "ms "
+        //                     << "for loading triples from disk to memory." << LOG_endl;
 
-        std::shared_ptr<HyperGraphBaseLoader> hyperloader;
-        // load from hdfs or posix file
-        if (boost::starts_with(dname, "hdfs:"))
-            hyperloader = std::make_shared<HyperGraphHDFSLoader>(sid, loader_mem);
-        else
-            hyperloader = std::make_shared<HyperGraphPosixLoader>(sid, loader_mem);
-
+        // check predicates
         auto count_preds = [this](const std::string str_idx_file, bool is_attr = false) {
             std::string pred;
             int pid;
@@ -471,18 +467,25 @@ public:
             }
             ifs.close();
         };
-
         count_preds(dname + "str_index");
-        if (this->predicates.size() <= 1) {
+        if (this->predicates.size() <= 1)
             logstream(LOG_ERROR) << "Encoding file of predicates should be named as \"str_index\". Graph loading failed. Please quit and try again." << LOG_endl;
-        }
         if (Global::enable_vattr)
             count_preds(dname + "str_attr_index", true);
 
+        // ========== native hyper loader ==========
         std::vector<std::vector<HyperEdge>> hyperedges;
         std::vector<std::vector<V2ETriple>> v2etriples;
 
-        auto count_hyperedge_types = [this](const std::string str_idx_file, bool is_attr = false) {
+        std::shared_ptr<HyperGraphBaseLoader> hyperloader;
+        // load from hdfs or posix file
+        if (boost::starts_with(dname, "hdfs:"))
+            hyperloader = std::make_shared<HyperGraphHDFSLoader>(sid, loader_mem);
+        else
+            hyperloader = std::make_shared<HyperGraphPosixLoader>(sid, loader_mem);
+
+        // check hyper types
+        auto count_hyperedge_types = [this](const std::string str_idx_file) {
             std::string edge_type;
             int htid;
             std::ifstream ifs(str_idx_file.c_str());
@@ -494,11 +497,9 @@ public:
             }
             ifs.close();
         };
-
         count_hyperedge_types(dname + "hyper_str_index");
-        if (this->edge_types.size() <= 1) {
-            logstream(LOG_ERROR) << "Encoding file of predicates should be named as \"str_index\". Graph loading failed. Please quit and try again." << LOG_endl;
-        }
+        if (this->edge_types.size() <= 1)
+            logstream(LOG_ERROR) << "Encoding file of hypertypes should be named as \"hyper_str_index\". Graph loading failed. Please quit and try again." << LOG_endl;
 
         start = timer::get_usec();
         hyperloader->load(dname, edge_models, hyperedges, v2etriples);
@@ -506,27 +507,31 @@ public:
         logstream(LOG_INFO) << "[HyperLoader] #" << sid << ": " << (end - start) / 1000 << "ms "
                             << "for loading hyperedges from disk to memory." << LOG_endl;
 
+        // ========== init RDF KV ==========
         // initiate gstore (kvstore) after loading and exchanging triples (memory reused)
-        gstore->refresh();
+        // gstore->refresh();
 
-        start = timer::get_usec();
-        init_gstore(triple_pso, triple_pos, triple_sav);
-        end = timer::get_usec();
-        logstream(LOG_INFO) << "[RDFGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
-                            << "for initializing gstore." << LOG_endl;
+        // start = timer::get_usec();
+        // init_gstore(triple_pso, triple_pos, triple_sav);
+        // end = timer::get_usec();
+        // logstream(LOG_INFO) << "[RDFGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
+        //                     << "for initializing gstore." << LOG_endl;
 
+        // ========== init V2E KV ==========
         start = timer::get_usec();
         init_v2estore(v2etriples);
         end = timer::get_usec();
         logstream(LOG_INFO) << "[HyperGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
                             << "for initializing v2estore." << LOG_endl;
 
+        // ========== init HyperEdge KV ==========
         start = timer::get_usec();
         init_hestore(hyperedges);
         end = timer::get_usec();
         logstream(LOG_INFO) << "[HyperGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
                             << "for initializing hestore." << LOG_endl;
 
+        // ========== init index ==========
         start = timer::get_usec();
         insert_he_index();
         end = timer::get_usec();
@@ -573,8 +578,10 @@ public:
     virtual int dynamic_load_data(std::string dname, bool check_dup) {}
 
     void print_graph_stat() override {
-        DGraph::print_graph_stat();
+        // DGraph::print_graph_stat();
+        logstream(LOG_INFO) << "========== [HyperGraph] hestore ==========" << LOG_endl;
         hestore->print_mem_usage();
+        logstream(LOG_INFO) << "========== [HyperGraph] v2estore ==========" << LOG_endl;
         v2estore->print_mem_usage();
     }
 };

@@ -25,6 +25,7 @@
 #include <string>
 
 #include "core/store/vertex.hpp"
+#include "core/common/hypertype.hpp"
 
 // utils
 #include "utils/math.hpp"
@@ -39,6 +40,10 @@ namespace wukong {
 // reserve two special index IDs (predicate and type)
 enum { EDGE_TYPE = 0,
        VERTEX_TYPE = 1 };
+
+static inline bool is_htid(ssid_t id) { return (id > 1) && (id < (1 << NBITS_ETYPE)); }
+
+static inline bool is_hvid(ssid_t id) { return id >= (1 << NBITS_ETYPE); }
 
 /**
  * hypergraph-friendly key/value store

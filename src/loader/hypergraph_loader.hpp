@@ -39,11 +39,14 @@
 #include "core/common/global.hpp"
 #include "core/common/rdma.hpp"
 #include "core/common/type.hpp"
+#include "core/hypergraph/hypervertex.hpp"
 
 // loader
 #include "loader_interface.hpp"
 
 // utils
+#include "utils/atomic.hpp"
+#include "utils/hdfs.hpp"
 #include "utils/assertion.hpp"
 #include "utils/math.hpp"
 #include "utils/timer.hpp"
@@ -211,12 +214,40 @@ protected:
 
         auto lambda = [&](std::istream& file, int localtid) {
             HyperEdge edge;
-            int num_ids;
-            while (file >> edge.edge_type >> num_ids) {
-                edge.vertices.resize(num_ids);
-                for(int i = 0; i < num_ids; i++){
-                    file >> edge.vertices[i];
-                }
+            int num_ids, vid;
+            char line[100], c;
+            // while (file >> edge.edge_type >> num_ids) {
+            //     edge.vertices.resize(num_ids);
+            //     for(int i = 0; i < num_ids; i++){
+            //         file >> edge.vertices[i];
+            //     }
+            //     // TODO: more balanced partition
+            //     int dst_sid = PARTITION(edge.vertices[0]);
+            //     send_hyperedge(localtid, dst_sid, edge);
+            // }
+
+            while (file >> edge.edge_type >> std::ws) {
+                ASSERT(is_htid(edge.edge_type));
+
+                // skip delimer
+                file.get(c);
+                ASSERT_EQ(c, '|');
+
+                // read vids
+                do {
+                    file >> vid >> std::ws;
+                    ASSERT(is_hvid(vid));
+                    edge.vertices.push_back(vid);
+                    c = file.peek();
+                } while (c != '|');
+            
+                // skip delimer
+                file.get(c);
+                ASSERT_EQ(c, '|');
+                
+                // skip rest
+                file.getline(line, 50);
+
                 // TODO: more balanced partition
                 int dst_sid = PARTITION(edge.vertices[0]);
                 send_hyperedge(localtid, dst_sid, edge);
@@ -333,12 +364,49 @@ protected:
 
         auto lambda = [&](std::istream& file, uint64_t& n, uint64_t gbuf_partition_sz, sid_t* kvs) {
             HyperEdge edge;
-            int num_ids;
-            while (file >> edge.edge_type >> num_ids) {
-                edge.vertices.resize(num_ids);
-                for(int i = 0; i < num_ids; i++){
-                    file >> edge.vertices[i];
-                }
+            int num_ids, vid;
+            char line[100], c;
+            // while (file >> edge.edge_type >> num_ids) {
+            //     edge.vertices.resize(num_ids);
+            //     for(int i = 0; i < num_ids; i++){
+            //         file >> edge.vertices[i];
+            //     }
+            //     // TODO: more balanced partition
+            //     int dst_sid = PARTITION(edge.vertices[0]);
+            //     if (dst_sid == sid) {
+            //         ASSERT((n + edge.get_num_ids()) * sizeof(sid_t) <= gbuf_partition_sz);
+            //         // buffer the hyperedge and update the counter
+            //         kvs[n] = edge.edge_type;
+            //         kvs[n+1] = edge.vertices.size();
+            //         std::copy(edge.vertices.begin(), edge.vertices.end(), &kvs[n+2]);
+            //         n += edge.get_num_ids();
+            //     }
+            // }
+
+            while (file >> edge.edge_type >> std::ws) {
+                printf("htid = %d, vid = ", edge.edge_type);
+
+                // skip delimer
+                file.get(c);
+                ASSERT_EQ(c, '|');
+
+                // read vids
+                do {
+                    file >> vid >> std::ws;
+                    ASSERT(is_vid(vid));
+                    edge.vertices.push_back(vid);
+                    printf("%d ", vid);
+                    c = file.peek();
+                } while (c != '|');
+            
+                // skip delimer
+                file.get(c);
+                ASSERT_EQ(c, '|');
+                
+                // skip rest
+                file.getline(line, 50);
+                printf("rest line = %s\n", line);
+
                 // TODO: more balanced partition
                 int dst_sid = PARTITION(edge.vertices[0]);
                 if (dst_sid == sid) {
@@ -348,7 +416,7 @@ protected:
                     kvs[n+1] = edge.vertices.size();
                     std::copy(edge.vertices.begin(), edge.vertices.end(), &kvs[n+2]);
                     n += edge.get_num_ids();
-                }
+                }            
             }
         };
 
