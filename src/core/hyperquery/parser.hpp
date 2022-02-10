@@ -49,6 +49,7 @@
 #include "core/common/type.hpp"
 #include "core/common/string_server.hpp"
 
+#include "core/sparql/query.hpp"
 #include "core/hyperquery/query.hpp"
 #include "core/hyperquery/absyn.hpp"
 
@@ -194,6 +195,9 @@ public:
         logstream(LOG_INFO) << "Parsing a SPARQL query is done." << LOG_endl;
         return SUCCESS;
     }
+
+    int parse(std::string fname, SPARQLQuery &sq) {return 0;}
+    int parse_template(std::string fname, SPARQLQuery_Template &sqt) {return 0;}
 };
 
 } // namespace wukong

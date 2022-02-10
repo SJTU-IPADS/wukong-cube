@@ -33,8 +33,10 @@
 #include "core/common/string_server.hpp"
 #include "core/common/monitor.hpp"
 
-#include "core/sparql/query.hpp"
-#include "core/sparql/parser.hpp"
+// #include "core/sparql/query.hpp"
+// #include "core/sparql/parser.hpp"
+#include "core/hyperquery/query.hpp"
+#include "core/hyperquery/parser.hpp"
 
 #include "core/network/adaptor.hpp"
 
@@ -303,6 +305,30 @@ public:
             ofs.close();
         }
     }
+
+    // Parse a single hyper query. Command is "-f"
+    // @is: input
+    // @reply: result
+    int run_parse_query(std::string fname) {
+        uint64_t start, end;
+        HyperQuery request;
+
+        // Parse the hyper query
+        start = timer::get_usec();
+        int ret = parser.parse(fname, request);
+        if (ret) {
+            // logstream(LOG_ERROR) << "Parsing failed! (" << parser.strerror << ")" << LOG_endl;
+            ASSERT_ERROR_CODE(false, ret);
+        }
+        end = timer::get_usec();
+        logstream(LOG_INFO) << "Parsing time: " << (end - start) << " usec" << LOG_endl;
+
+        // TODO: print query
+        request.print_hyper_query();
+
+        return 0; // success
+    } // end of run_parse_query
+
     // Run a single query for @cnt times. Command is "-f"
     // @is: input
     // @reply: result

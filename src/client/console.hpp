@@ -100,6 +100,7 @@ options_description       help_desc("help                display help infomation
 options_description       quit_desc("quit                quit from the console");
 options_description     config_desc("config <args>       run commands for configueration");
 options_description     logger_desc("logger <args>       run commands for logger");
+options_description     parse_desc("parse <args>         parse a single query");
 options_description     sparql_desc("sparql <args>       run SPARQL queries in single or batch mode");
 options_description sparql_emu_desc("sparql-emu <args>   emulate clients to continuously send SPARQL queries");
 options_description       load_desc("load <args>         load RDF data into dynamic (in-memmory) graph store");
@@ -137,6 +138,13 @@ void init_options_desc()
     ("help,h", "help message about logger")
     ;
     all_desc.add(logger_desc);
+
+    // e.g., wukong> parse <args>
+    parse_desc.add_options()
+    (",f", value<std::string>()->value_name("<fname>"), "parse a single query from <fname>")
+    ("help,h", "help message about parse")
+    ;
+    all_desc.add(parse_desc);
 
     // e.g., wukong> sparql <args>
     sparql_desc.add_options()
@@ -420,6 +428,52 @@ static void run_logger(Proxy *proxy, int argc, char **argv)
                                      << " (" << levelname[level] << ")" << std::endl;
         }
         return;
+    }
+}
+
+/**
+ * run the 'parse' command
+ * usage:
+ * parse -f <fname>
+ */
+static void run_parse(Proxy * proxy, int argc, char **argv)
+{
+    // use the master proxy thread to run SPARQL queries in single mode or batch mode
+    if (!MASTER(proxy))
+        return;
+
+    // parse command
+    variables_map parse_vm;
+    try {
+        store(parse_command_line(argc, argv, parse_desc), parse_vm);
+    } catch (...) { // something go wrong
+        fail_to_parse(proxy, argc, argv);
+        return;
+    }
+    notify(parse_vm);
+
+    // parse options
+    if (parse_vm.count("help")) {
+        if (MASTER(proxy))
+            std::cout << parse_desc;
+        return;
+    }
+
+    /// [single mode]
+    if (parse_vm.count("-f")) {
+        std::string fname = parse_vm["-f"].as<std::string>();
+
+        /// parse sparql
+        try {
+            proxy->run_parse_query(fname);
+        } catch (WukongException &ex) {
+            logstream(LOG_ERROR) << "Query failed [ERRNO " << ex.code()
+                                 << "]: " << ex.what() << LOG_endl;
+            fail_to_parse(proxy, argc, argv);  // invalid cmd
+            return;
+        }
+    } else {
+        logstream(LOG_ERROR) << "-f is prerequisite!" << LOG_endl;
     }
 }
 
@@ -987,6 +1041,8 @@ void run_console(Proxy *proxy)
                 run_config(proxy, argc, argv);
             } else if (cmd_type == "logger") {
                 run_logger(proxy, argc, argv);
+            } else if (cmd_type == "parse") {
+                run_parse(proxy, argc, argv);
             } else if (cmd_type == "sparql") {  // handle SPARQL queries
                 run_sparql(proxy, argc, argv);
             } else if (cmd_type == "sparql-emu") {  // run a SPARQL emulator on each proxy
