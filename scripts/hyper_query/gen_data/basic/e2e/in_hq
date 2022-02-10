@@ -1,0 +1,5 @@
+PREFIX dblp: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT * WHERE {
+	<http://www.DepartmentX.UniversityY.edu/Entity65536> buildin:inEdges(dblp:hypertype12) ?E_CO
+}

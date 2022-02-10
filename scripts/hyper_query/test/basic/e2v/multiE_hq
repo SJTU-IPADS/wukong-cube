@@ -1,0 +1,3 @@
+SELECT ?X WHERE {
+	[<http://www.edu/CoAuthor0>, <http://www.edu/CoAuthor1>] buildin:vertices ?X
+}

@@ -1,0 +1,3 @@
+SELECT * WHERE {
+	<http://www.DepartmentX.UniversityY.edu/Entity65536> buildin:vertices ?X
+}
