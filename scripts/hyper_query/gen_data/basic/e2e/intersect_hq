@@ -1,5 +1,5 @@
 PREFIX dblp: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
 SELECT * WHERE {
-	<http://www.DepartmentX.UniversityY.edu/Entity65536> buildin:intersectEdges(dblp:hypertype12, 2) ?E_CO
+	<http://www.DepartmentX.UniversityY.edu/HyperEdge3> buildin:intersectEdges(dblp:hypertype12, 2) ?E_CO
 }

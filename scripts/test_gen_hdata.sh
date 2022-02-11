@@ -64,6 +64,7 @@ function gen_str_normal {
 function gen_data {
     # generate str_normal
     vid_base=$((1 << 16))
+    he_nums=0
 
     # for each data file
     for i in `seq 0 $(( DATA_FILE_NUM - 1))`
@@ -73,7 +74,8 @@ function gen_data {
         # generate each line in this data file
         for lnum in `seq 0 $((DATA_FILE_LINE - 1))`
         do
-            line=""
+            line="<http://www.DepartmentX.UniversityY.edu/HyperEdge$he_nums>\t"
+            he_nums=$((he_nums+1))
             # generate htid in this line
             htid=$(($RANDOM % 10 + MIN_HTID))
             line=$line$htid"\t|\t"
