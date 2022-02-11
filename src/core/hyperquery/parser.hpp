@@ -116,10 +116,15 @@ private:
         {
             std::string str = "<" + e.value + ">"; // IRI
             if (!str_server->exist(str)) {
-                logstream(LOG_ERROR) << "Unknown IRI: " + str << LOG_endl;
-                throw WukongException(SYNTAX_ERROR);
+                if (!str_server->exist_he(str)) {
+                    logstream(LOG_ERROR) << "Unknown IRI: " + str << LOG_endl;
+                    throw WukongException(SYNTAX_ERROR);
+                } else {
+                    return str_server->str2id_he(str);
+                }
+            } else {
+                return str_server->str2id(str);
             }
-            return str_server->str2id(str);
         }
         default:
             throw WukongException(SYNTAX_ERROR);

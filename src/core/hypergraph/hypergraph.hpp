@@ -425,7 +425,7 @@ public:
         this->v2estore = std::make_shared<StaticKVStore<hvkey_t, iptr_t, heid_t>>(sid, v2e_kv_mem);
     }
 
-    void load(std::string dname) override {
+    void load(std::string dname, StringServer *str_server = NULL) override {
         uint64_t start, end;
 
         LoaderMem loader_mem = {
@@ -502,7 +502,7 @@ public:
             logstream(LOG_ERROR) << "Encoding file of hypertypes should be named as \"hyper_str_index\". Graph loading failed. Please quit and try again." << LOG_endl;
 
         start = timer::get_usec();
-        hyperloader->load(dname, edge_models, hyperedges, v2etriples);
+        hyperloader->load(dname, str_server, edge_models, hyperedges, v2etriples);
         end = timer::get_usec();
         logstream(LOG_INFO) << "[HyperLoader] #" << sid << ": " << (end - start) / 1000 << "ms "
                             << "for loading hyperedges from disk to memory." << LOG_endl;

@@ -139,7 +139,7 @@ public:
     DGraph(int sid, KVMem kv_mem)
         : sid(sid), kv_mem(kv_mem){}
 
-    virtual void load(std::string dname) {
+    virtual void load(std::string dname, StringServer *str_server = NULL) {
         uint64_t start, end;
 
         // load from hdfs or posix file

@@ -58,8 +58,8 @@ public:
     // TODO: attribue
 
     int get_num_ids() {
-        // edge_type + id_num + ids
-        return vertices.size() + 2;
+        // edge_type + edge_id + id_num + ids
+        return vertices.size() + 3;
     }
 
     bool operator==(const HyperEdge& edge) const {

@@ -32,6 +32,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include <tbb/concurrent_hash_map.h>       // NOLINT
+
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/mpi.hpp>
 #include <boost/unordered_map.hpp>
@@ -54,6 +56,9 @@
 namespace wukong {
 
 class HyperGraphBaseLoader : public HyperGraphLoaderInterface {
+    using tbb_str_hash_map = tbb::concurrent_hash_map<heid_t, std::string>;
+    tbb_str_hash_map id2str;
+
 protected:
     int sid;
     LoaderMem loader_mem;
@@ -176,8 +181,9 @@ protected:
 
         // buffer the hyperedge and update the counter
         lbuf_partition[n] = edge.edge_type;
-        lbuf_partition[n+1] = edge.vertices.size();
-        std::copy(edge.vertices.begin(), edge.vertices.end(), &lbuf_partition[n+2]);
+        lbuf_partition[n + 1] = edge.id;
+        lbuf_partition[n + 2] = edge.vertices.size();
+        std::copy(edge.vertices.begin(), edge.vertices.end(), &lbuf_partition[n + 3]);
         *pn = (n + num_ids);
     }
 
@@ -211,11 +217,13 @@ protected:
                               std::vector<std::string>& fnames) {
         // ensure the file name list has the same order on all servers
         std::sort(fnames.begin(), fnames.end());
+        std::vector<uint64_t> edge_index(Global::num_engines, 1);
 
-        auto lambda = [&](std::istream& file, int localtid) {
+        auto lambda = [&](std::istream& file, uint64_t &index_start, int localtid) {
             HyperEdge edge;
             int num_ids, vid;
             char line[100], c;
+            std::string name;
             // while (file >> edge.edge_type >> num_ids) {
             //     edge.vertices.resize(num_ids);
             //     for(int i = 0; i < num_ids; i++){
@@ -226,7 +234,7 @@ protected:
             //     send_hyperedge(localtid, dst_sid, edge);
             // }
 
-            while (file >> edge.edge_type >> std::ws) {
+            while (file >> name >> edge.edge_type >> std::ws) {
                 ASSERT(is_htid(edge.edge_type));
 
                 // skip delimer
@@ -247,6 +255,14 @@ protected:
                 
                 // skip rest
                 file.getline(line, 50);
+
+                // generate heid
+                edge.id = generate_heid(sid, localtid, index_start++);
+
+                // record string mapping
+                tbb_str_hash_map::accessor a;
+                id2str.insert(a, edge.id);
+                a->second.assign(name);
 
                 // TODO: more balanced partition
                 int dst_sid = PARTITION(edge.vertices[0]);
@@ -273,7 +289,7 @@ protected:
             if (i % Global::num_servers != sid) continue;
 
             std::istream* file = init_istream(fnames[i]);
-            lambda(*file, localtid);
+            lambda(*file, edge_index[localtid], localtid);
             close_istream(file);
         }
 
@@ -320,7 +336,7 @@ protected:
             // TODO: send v2e triples
             // generate id for each hyperedge
             for(int j = 0; j < edges[i].size(); j++){
-                edges[i][j].id = generate_heid(sid, localtid, index_start+j);
+                // edges[i][j].id = generate_heid(sid, localtid, index_start+j);
                 for(int k = 0; k < edges[i][j].vertices.size(); k++){
                     int dst_sid = PARTITION(edges[i][j].vertices[k]);
                     V2ETriple triple;
@@ -361,11 +377,14 @@ protected:
     int read_all_files(std::map<sid_t, HyperEdgeModel>& edge_models, 
                        std::vector<std::string>& fnames) {
         std::sort(fnames.begin(), fnames.end());
+        std::vector<uint64_t> edge_index(Global::num_engines, 1);
 
-        auto lambda = [&](std::istream& file, uint64_t& n, uint64_t gbuf_partition_sz, sid_t* kvs) {
+        auto lambda = [&](std::istream& file, uint64_t& n, uint64_t &index_start, 
+                            uint64_t gbuf_partition_sz, sid_t* kvs, int localtid) {
             HyperEdge edge;
             int num_ids, vid;
             char line[100], c;
+            std::string name;
             // while (file >> edge.edge_type >> num_ids) {
             //     edge.vertices.resize(num_ids);
             //     for(int i = 0; i < num_ids; i++){
@@ -383,8 +402,8 @@ protected:
             //     }
             // }
 
-            while (file >> edge.edge_type >> std::ws) {
-                printf("htid = %d, vid = ", edge.edge_type);
+            while (file >> name >> edge.edge_type >> std::ws) {
+                ASSERT(is_htid(edge.edge_type));
 
                 // skip delimer
                 file.get(c);
@@ -393,9 +412,8 @@ protected:
                 // read vids
                 do {
                     file >> vid >> std::ws;
-                    ASSERT(is_vid(vid));
+                    ASSERT(is_hvid(vid));
                     edge.vertices.push_back(vid);
-                    printf("%d ", vid);
                     c = file.peek();
                 } while (c != '|');
             
@@ -405,7 +423,14 @@ protected:
                 
                 // skip rest
                 file.getline(line, 50);
-                printf("rest line = %s\n", line);
+
+                // generate heid
+                edge.id = generate_heid(sid, localtid, index_start++);
+
+                // record string mapping
+                tbb_str_hash_map::accessor a;
+                id2str.insert(a, edge.id);
+                a->second.assign(name);
 
                 // TODO: more balanced partition
                 int dst_sid = PARTITION(edge.vertices[0]);
@@ -413,8 +438,9 @@ protected:
                     ASSERT((n + edge.get_num_ids()) * sizeof(sid_t) <= gbuf_partition_sz);
                     // buffer the hyperedge and update the counter
                     kvs[n] = edge.edge_type;
-                    kvs[n+1] = edge.vertices.size();
-                    std::copy(edge.vertices.begin(), edge.vertices.end(), &kvs[n+2]);
+                    kvs[n + 1] = edge.id;
+                    kvs[n + 2] = edge.vertices.size();
+                    std::copy(edge.vertices.begin(), edge.vertices.end(), &kvs[n + 3]);
                     n += edge.get_num_ids();
                 }            
             }
@@ -440,7 +466,7 @@ protected:
             uint64_t n = *pn;
 
             std::istream* file = init_istream(fnames[i]);
-            lambda(*file, n, gbuf_partition_sz, kvs);
+            lambda(*file, n, edge_index[localtid], gbuf_partition_sz, kvs, localtid);
             close_istream(file);
 
             *pn = n;
@@ -481,16 +507,17 @@ protected:
                 while(i < n) {
                     HyperEdge edge;
                     edge.edge_type = kvs[i];
-                    int num_ids = kvs[i+1];
+                    edge.id = kvs[i + 1];
+                    int num_ids = kvs[i + 2];
 
-                    if ((kvs[i+2] % Global::num_engines) == tid){
+                    if ((kvs[i + 3] % Global::num_engines) == tid){
                         edge.vertices.resize(num_ids);
-                        std::copy(&kvs[i+2], &kvs[i+2+num_ids], edge.vertices.begin());
+                        std::copy(&kvs[i + 3], &kvs[i + 3 + num_ids], edge.vertices.begin());
                         hyperedges[tid].push_back(edge);
                     }
 
-                    i += (num_ids + 2);
-                    cnt += (num_ids + 2);
+                    i += (num_ids + 3);
+                    cnt += (num_ids + 3);
                     // print the progress (step = 5%) of aggregation
                     if (cnt >= total * 0.05) {
                         uint64_t now = wukong::atomic::add_and_fetch(&progress, 1);
@@ -625,6 +652,7 @@ public:
     virtual std::vector<std::string> list_files(const std::string& src, std::string prefix) = 0;
 
     void load(const std::string& src,
+              StringServer *str_server,
               std::map<sid_t, HyperEdgeModel>& edge_models,
               std::vector<std::vector<HyperEdge>>& edges,
               std::vector<std::vector<V2ETriple>>& v2etriples) {
@@ -647,6 +675,11 @@ public:
 
         load_hyperedges_from_all(dfiles, edge_models, edges, v2etriples);
 
+        // add hyperedge name mapping into str_server
+        for (auto &&pair : id2str) str_server->add_he(pair.second, pair.first);
+        id2str.clear();
+
+        // log meta info
         for(int i = 0; i < edges.size(); i++) {
             std::cout << "#" << sid << " Engine [" << i << "]" << std::endl;
             std::cout << "#" << sid << " edge size:" << edges[i].size() << std::endl;

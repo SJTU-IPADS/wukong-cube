@@ -35,6 +35,7 @@
 
 #include "core/common/global.hpp"
 #include "core/common/type.hpp"
+#include "core/common/hypertype.hpp"
 
 // utils
 #include "utils/assertion.hpp"
@@ -55,6 +56,10 @@ private:
 #else
     boost::unordered_map<std::string, sid_t> simap;  // STRING to ID
     boost::unordered_map<sid_t, std::string> ismap;  // ID to STRING
+
+    // mapping between hyperedge id to hyperedge name
+    boost::unordered_map<std::string, heid_t> simap_he;  // STRING to ID
+    boost::unordered_map<heid_t, std::string> ismap_he;  // ID to STRING
 #endif
 
 public:
@@ -102,14 +107,19 @@ public:
     void shrink() { bimap.storage_resize(); }
 #else
     bool exist(sid_t sid) { return ismap.find(sid) != ismap.end(); }
+    bool exist_he(heid_t heid) { return ismap_he.find(heid) != ismap_he.end(); }
 
     bool exist(std::string str) { return simap.find(str) != simap.end(); }
+    bool exist_he(std::string str) { return simap_he.find(str) != simap_he.end(); }
 
     std::string id2str(sid_t sid) { return ismap[sid]; }
+    std::string id2str_he(heid_t heid) { return ismap_he[heid]; }
 
     sid_t str2id(std::string str) { return simap[str]; }
+    heid_t str2id_he(std::string str) { return simap_he[str]; }
 
     void add(std::string str, sid_t sid) { simap[str] = sid; ismap[sid] = str; }
+    void add_he(std::string str, heid_t heid) { simap_he[str] = heid; ismap_he[heid] = str; }
 
     void shrink() { }
 #endif

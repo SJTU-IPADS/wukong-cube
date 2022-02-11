@@ -27,6 +27,7 @@
 
 #include "core/common/type.hpp"
 #include "core/common/hypertype.hpp"
+#include "core/common/string_server.hpp"
 
 namespace wukong {
 
@@ -54,6 +55,7 @@ public:
 class HyperGraphLoaderInterface {
 public:
     virtual void load(const std::string& src,
+                      StringServer *str_server,
                       std::map<sid_t, HyperEdgeModel>& edge_models,
                       std::vector<std::vector<HyperEdge>>& edges,
                       std::vector<std::vector<V2ETriple>>& v2etriples) = 0;
