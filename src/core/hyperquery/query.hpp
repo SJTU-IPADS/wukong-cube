@@ -59,6 +59,8 @@ private:
     void serialize(Archive &ar, const unsigned int version) {
         ar & qid;
         ar & pqid;
+        ar & pattern_step;
+        ar & pattern_group;
         ar & result;
     }
 
@@ -71,13 +73,27 @@ public:
     class Pattern {
     private:
         friend class boost::serialization::access;
+        template <typename Archive>
+        void serialize(Archive &ar, const unsigned int version) {
+            ar & type;
+            ar & input_eids;
+            ar & input_vids;
+            ar & output_var;
+            ar & he_type;
+            ar & bind_node;
+            ar & k;
+        }
 
     public:
         PatternType type;
         
-        // multi input vars and single output var
-        std::vector<ssid_t> input_vars;
+        // multiple input and single output
+        std::vector<heid_t> input_eids;
+        std::vector<ssid_t> input_vids;
         ssid_t output_var;
+
+        // type
+        sid_t he_type;
 
         // other constraints of the hyper pattern
         sid_t bind_node = 0;
@@ -85,9 +101,14 @@ public:
 
         Pattern() {}
 
-        Pattern(PatternType type, std::vector<ssid_t> input_vars, ssid_t output_var, sid_t bind = 0, uint32_t k = 0):
-                type(type), input_vars(input_vars), output_var(output_var), bind_node(bind), k(k) {
-            ASSERT_GT(input_vars.size(), 0);
+        Pattern(PatternType type,
+                sid_t he_type,
+                std::vector<ssid_t> input_vids,
+                std::vector<heid_t> input_eids,
+                ssid_t output_var, sid_t bind = 0, uint32_t k = 0):
+                type(type), he_type(he_type), input_vids(input_vids), input_eids(input_eids),
+                output_var(output_var), bind_node(bind), k(k) {
+            ASSERT_GT(input_vids.size(), 0);
             ASSERT_LT(output_var, 0);
             ASSERT_GE(bind_node, 0);
             ASSERT_GE(k, 0);
@@ -97,7 +118,7 @@ public:
             static const char *PatternTypeName[9] = { "GV", "GE", "GP", "V2E", "E2V", "E2E_ITSCT", "E2E_CT", "E2E_IN", "V2V"};
 
             logstream(LOG_INFO) << "\t[ ";
-            for (auto &&var : input_vars)
+            for (auto &&var : input_vids)
                 logstream(LOG_INFO) << var << " "; 
             logstream(LOG_INFO) << " ]\t" << PatternTypeName[type] 
                                 << "( bind_node = " << bind_node
@@ -109,6 +130,10 @@ public:
     class PatternGroup {
     private:
         friend class boost::serialization::access;
+        template <typename Archive>
+        void serialize(Archive &ar, const unsigned int version) {
+            ar & patterns;
+        }
 
     public:
         std::vector<Pattern> patterns;
@@ -122,7 +147,7 @@ public:
         // used to calculate dst_sid
         ssid_t get_start() {
             if (this->patterns.size() > 0)
-                return this->patterns[0].input_vars[0];
+                return this->patterns[0].input_vids[0];
             else
                 ASSERT_ERROR_CODE(false, UNKNOWN_PATTERN);
             return BLANK_ID;
@@ -169,6 +194,11 @@ public:
         DataType get_row_col(int r, int c) {
             ASSERT(r >= 0 && c >= 0);
             return result_data[col_num * r + c];
+        }
+
+        void append_row_to(int r, std::vector<DataType> &update) {
+            for (int c = 0; c < col_num; c++)
+                update.push_back(get_row_col(r, c));
         }
 
         void append_row_to(int r, ResultTable<DataType> &update) {
@@ -274,6 +304,13 @@ public:
             float_res_table.clear();
             double_res_table.clear();
             required_vars.clear();
+        }
+
+        bool empty() {
+            for(auto col_num : col_nums) {
+                if(col_num > 0) return false;
+            }
+            return true;
         }
 
         vstat var_stat(ssid_t var) {
@@ -476,6 +513,14 @@ public:
     Pattern & get_pattern(int step) {
         ASSERT(step < pattern_group.patterns.size());
         return pattern_group.patterns[step];
+    }
+
+    void advance_step() {
+        this->pattern_step++;
+    }
+
+    int get_pattern_step() {
+        return this->pattern_step;
     }
 
     // shrink the query to reduce communication cost (before sending)

@@ -146,6 +146,9 @@ private:
             // parse all the elements
             HyperQuery::PatternType type = transfer_type(p.type);
             std::vector<ssid_t> input_vars = transfer_element_list(p.input_vars);
+            // TODO:
+            sid_t he_type;
+            std::vector<heid_t> input_eids;
             ssid_t output_var = transfer_element(p.output_var);
             sid_t bind_node = transfer_element(p.bind_node);
             uint32_t k = (uint32_t)p.k;
@@ -154,7 +157,7 @@ private:
             ASSERT_LT(output_var, 0);
             ASSERT_GE(p.k, 0);
             // construct and add the new pattern
-            HyperQuery::Pattern pattern(type, input_vars, output_var, bind_node, k);
+            HyperQuery::Pattern pattern(type, he_type, input_vars, input_eids, output_var, bind_node, k);
             dst.patterns.push_back(pattern);
         }
 

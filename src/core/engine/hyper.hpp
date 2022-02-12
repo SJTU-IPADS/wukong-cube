@@ -79,16 +79,137 @@ private:
         // TODO-zyw:
     }
 
-    void op_get_properties(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_INFO) << "Execute P() op:" << LOG_endl;
-    }
-
     void op_get_e2v(HyperQuery& query, HyperQuery::Pattern& op) {
         logstream(LOG_INFO) << "Execute containV() op:" << LOG_endl;
+        // multi-edges e2v
+        if(op.input_eids.size() > 1) {
+            // TODO:
+        }
+        // single-const-edge e2v
+        else if (op.input_eids.size() == 1) {
+            heid_t start = op.input_eids[0];
+            ssid_t end = op.output_var;
+
+            HyperQuery::Result& res = query.result;
+
+            // MUST be the first triple pattern
+            ASSERT_ERROR_CODE(res.empty(), FIRST_PATTERN_ERROR);
+
+            uint64_t sz = 0;
+            sid_t* vids = graph->get_edge_by_heid(tid, start, sz);
+            std::vector<sid_t> updated_result_table;
+            for(uint64_t k = 0; k < sz; k++)
+                updated_result_table.push_back(vids[k]);
+
+            // update result and metadata
+            res.vid_res_table.load_data(updated_result_table);
+            res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_VERTEX));
+            res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_VERTEX) + 1, SID_t);
+            res.update_nrows();
+        } 
+        // single-var-vertex e2v
+        else {
+            ssid_t start = op.input_vids[0];
+            ssid_t end = op.output_var;
+
+            HyperQuery::Result& res = query.result;
+
+            std::vector<sid_t> updated_result_table;
+
+            sid_t cached = BLANK_ID; // simple dedup for consecutive same vertices
+            sid_t* vids = NULL;
+            uint64_t sz = 0;
+            int nrows = res.get_row_num();
+
+            for(int i = 0; i < nrows; i++) {
+                heid_t cur = res.get_row_col(i, res.var2col(start), HEID_t);
+
+                if (cur != cached) { // new KNOWN
+                    cached = cur;
+                    vids = graph->get_edge_by_heid(tid, cur, sz);
+                }
+
+                for (uint64_t k = 0; k < sz; k++) {
+                    res.vid_res_table.append_row_to(i, updated_result_table);
+                    updated_result_table.push_back(vids[k]);
+                }
+            }
+
+            res.vid_res_table.load_data(updated_result_table);
+            res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_VERTEX));
+            res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_VERTEX) + 1, SID_t);
+            res.update_nrows();
+        }
+
+        query.advance_step();
     }
 
     void op_get_v2e(HyperQuery& query, HyperQuery::Pattern& op) {
         logstream(LOG_INFO) << "Execute inE() op:" << LOG_endl;
+        ASSERT_GT(op.input_vids.size(), 0);
+        // multi-vertices v2e
+        if(op.input_vids.size() > 1) {
+            // TODO:
+        }
+        // single-const-vertex v2e
+        else if (op.input_vids[0] > 0) {
+            sid_t start = op.input_vids[0];
+            sid_t htid = op.he_type;
+            ssid_t end = op.output_var;
+
+            HyperQuery::Result& res = query.result;
+
+            // MUST be the first triple pattern
+            ASSERT_ERROR_CODE(res.empty(), FIRST_PATTERN_ERROR);
+
+            uint64_t sz = 0;
+            heid_t* eids = graph->get_heids_by_vertex_and_type(tid, start, htid, sz);
+            std::vector<heid_t> updated_result_table;
+            for(uint64_t k = 0; k < sz; k++)
+                updated_result_table.push_back(eids[k]);
+
+            // update result and metadata
+            res.heid_res_table.load_data(updated_result_table);
+            res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_EDGE));
+            res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_EDGE) + 1, HEID_t);
+            res.update_nrows();
+        } 
+        // single-var-vertex v2e
+        else {
+            ssid_t start = op.input_vids[0];
+            sid_t htid = op.he_type;
+            ssid_t end = op.output_var;
+
+            HyperQuery::Result& res = query.result;
+
+            std::vector<heid_t> updated_result_table;
+
+            sid_t cached = BLANK_ID; // simple dedup for consecutive same vertices
+            heid_t* eids = NULL;
+            uint64_t sz = 0;
+            int nrows = res.get_row_num();
+
+            for(int i = 0; i < nrows; i++) {
+                sid_t cur = res.get_row_col(i, res.var2col(start), SID_t);
+
+                if (cur != cached) { // new KNOWN
+                    cached = cur;
+                    eids = graph->get_heids_by_vertex_and_type(tid, cur, htid, sz);
+                }
+
+                for (uint64_t k = 0; k < sz; k++) {
+                    res.heid_res_table.append_row_to(i, updated_result_table);
+                    updated_result_table.push_back(eids[k]);
+                }
+            }
+
+            res.heid_res_table.load_data(updated_result_table);
+            res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_EDGE));
+            res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_EDGE) + 1, HEID_t);
+            res.update_nrows();
+        }
+
+        query.advance_step();
     }
 
     void op_get_v2v(HyperQuery& query, HyperQuery::Pattern& op) {
