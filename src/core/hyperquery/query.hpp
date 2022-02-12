@@ -49,6 +49,13 @@ namespace wukong {
 
 using namespace boost::archive;
 
+// EXT = [ TYPE:16 | COL:16 ]
+#define TYPE_BITS   16   // column type
+#define COL_BITS    16   // column number
+
+// Init COL value with NO_RESULT_COL
+#define NO_RESULT_COL ((1 << COL_BITS) - 1)
+
 /**
  * HYPER Query
  */
@@ -266,13 +273,6 @@ public:
 
         enum vstat { KNOWN_VAR = 0, UNKNOWN_VAR, CONST_VAR }; // variable stat
 
-        // EXT = [ TYPE:16 | COL:16 ]
-        static const int TYPE_BITS = 16;   // column type
-        static const int COL_BITS = 16;   // column number
-
-        // Init COL value with NO_RESULT_COL
-        static const int NO_RESULT_COL = ((1 << COL_BITS) - 1);
-
         // conversion between col and ext
         int col2ext(int col, int type) { return ((type << COL_BITS) | col); }
         int ext2col(int ext) { return (ext & ((1 << COL_BITS) - 1)); }
@@ -402,6 +402,23 @@ public:
             }
         }
 
+        int get_col_num(data_type type = SID_t) {
+            switch (type) {
+            case SID_t:
+                vid_res_table.get_col_num();
+                break;
+            case HEID_t:
+                heid_res_table.get_col_num();
+                break;
+            case FLOAT_t:
+                float_res_table.get_col_num();
+                break;
+            case DOUBLE_t:
+                double_res_table.get_col_num();
+                break;
+            }
+        }
+
         int get_row_num() const {
             if(vid_res_table.get_col_num() == 0 && 
                heid_res_table.get_col_num() == 0 &&
@@ -500,7 +517,7 @@ public:
         : pattern_group(g) {
         result.nvars = nvars;
         result.required_vars = required_vars;
-        result.v2c_map.resize(nvars, Result::NO_RESULT_COL);
+        result.v2c_map.resize(nvars, NO_RESULT_COL);
     }
 
     // return the current pattern
