@@ -54,6 +54,31 @@
 
 namespace wukong {
 
+// Returns the number of identical items among 2 sets
+uint32_t intersect_set(std::set<sid_t> a, std::set<sid_t> b) {
+    uint32_t intersect_num = 0;
+    for (auto &&ai : a) {
+        auto res = b.find(ai);
+        if (res != b.end()) {
+            b.erase(res);
+            intersect_num++;
+        }
+    }
+    return intersect_num;
+}
+
+// Returns true if a contains b
+bool contain_set(std::set<sid_t> a, std::set<sid_t> b) {
+    for (auto &&ai : a) {
+        auto res = b.find(ai);
+        if (res != b.end()) {
+            b.erase(res);
+            if (b.empty()) return true;
+        }
+    }
+    return b.empty();
+}
+
 class HyperEngine {
 private:
     static const ssid_t NO_VAR = 0;
@@ -96,7 +121,70 @@ private:
     }
 
     void op_get_e2e(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_INFO) << "Execute intersectE() op:" << LOG_endl;
+        logstream(LOG_INFO) << "Execute E2E intersect op:" << LOG_endl;
+        HyperQuery::Result &res = query.result;
+
+        // check if the pattern is valid
+        std::vector<heid_t> const_inputs;
+        std::vector<ssid_t> var_inputs;
+        std::vector<int> var_cols;
+        for (auto &&input : op.input_vars) {
+            if (input > 0) const_inputs.push_back(input);
+            else if (input < 0) {
+                int col = res.var2col(input);
+                ASSERT_ERROR_CODE(col != NO_RESULT, VERTEX_INVALID);
+                var_inputs.push_back(input);
+                var_cols.push_back(col);
+            }
+        }
+        ASSERT_ERROR_CODE(var_inputs.empty() && query.pattern_step != 0, VERTEX_INVALID);
+        ASSERT_ERROR_CODE(!is_htid(op.bind_node), BIND_NODE_INVALID);
+        ASSERT_ERROR_CODE(op.k == 0, K_INVALID);
+
+        // execute pattern
+        if (var_inputs.empty()) {   // const pattern
+            uint64_t he_sz, vid_sz;
+            sid_t* vids;
+            heid_t* heids;
+            HyperQuery::ResultTable<heid_t> updated_result_table;
+            std::vector<std::set<sid_t>> const_hes(const_inputs.size());
+            // get const hyperedges first
+            for (size_t i = 0; i < const_inputs.size(); i++) {
+                vids = graph->get_edge_by_heid(tid, const_inputs[i], vid_sz);
+                for (size_t k = 0; k < vid_sz; k++) const_hes[i].insert(vids[k]);
+            }
+
+            // get all hyperedges by hyper type, and compare them to each const hyperedge
+            heids = graph->get_heids_by_type(tid, op.bind_node, he_sz);
+            for (size_t i = 0; i < he_sz; i++) {
+                std::set<sid_t> curr_he;
+                
+                // get hyperedge content
+                vids = graph->get_edge_by_heid(tid, heids[i], vid_sz);
+                for (size_t k = 0; k < vid_sz; k++) curr_he.insert(vids[k]);
+
+                // check if intersect with each const hyperedge
+                bool flag = true;
+                for (auto &&const_he : const_hes)
+                    if (intersect_set(const_he, curr_he) < op.k) {
+                        flag = false; break;
+                    }
+
+                // if intersect, add current heid into result
+                if (flag) updated_result_table.result_data.push_back(heids[i]);
+            }
+
+            // update result
+            res.heid_res_table.swap(updated_result_table);
+            res.set_col_num(1, HEID_t);
+            res.add_var2col(op.output_var, 0, HEID_t);
+            res.update_nrows();
+        } else {
+            // TODO: when input_vars contain variables
+        }
+
+        // increase pattern step
+        query.pattern_step++;
     }
 
     std::vector<HyperQuery> generate_sub_query(HyperQuery &query, HyperQuery::Pattern& op) {

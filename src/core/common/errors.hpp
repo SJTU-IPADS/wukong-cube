@@ -43,6 +43,8 @@ enum {
     FIRST_PATTERN_ERROR,
     UNKNOWN_FILTER,
     FILE_NOT_FOUND,
+    BIND_NODE_INVALID,
+    K_INVALID,
     ERROR_LAST
 };
 
@@ -61,6 +63,8 @@ static const char *err_msgs[ERROR_LAST] = {
     "You may change SETTING files to avoid this error. (e.g. global.hpp/config/...)",
     "Const_X_X or index_X_X must be the first pattern.",
     "Unsupported filter type.",
+    "Invalid Bind node.",
+    "Invalid K value in pattern.",
     "Query file not found."};
 
 // An exception
