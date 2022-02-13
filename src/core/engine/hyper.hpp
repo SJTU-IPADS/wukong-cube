@@ -362,7 +362,7 @@ private:
         std::vector<heid_t> const_inputs;
         std::vector<ssid_t> var_inputs;
         std::vector<int> var_cols;
-        for (auto &&input : op.input_vars) {
+        for (auto &&input : op.input_eids) {
             if (input > 0) const_inputs.push_back(input);
             else if (input < 0) {
                 int col = res.var2col(input);
@@ -371,10 +371,11 @@ private:
                 var_cols.push_back(col);
             }
         }
-        ASSERT_ERROR_CODE(!var_inputs.empty() || query.pattern_step == 0, VERTEX_INVALID);
-        ASSERT_ERROR_CODE(!is_htid(op.bind_node), BIND_NODE_INVALID);
+        ASSERT_ERROR_CODE((!var_inputs.empty() && query.pattern_step != 0) ||
+                            (var_inputs.empty() && query.pattern_step == 0), VERTEX_INVALID);
         ASSERT_ERROR_CODE((op.type == HyperQuery::PatternType::E2E_ITSCT && op.k != 0) ||
                             (op.type != HyperQuery::PatternType::E2E_ITSCT && op.k == 0), K_INVALID);
+        ASSERT_ERROR_CODE(is_htid(op.bind_node), BIND_NODE_INVALID);
 
         uint64_t he_sz, vid_sz;
         sid_t* vids;
@@ -579,14 +580,14 @@ public:
             }
 
             // 1. not done, execute ops
-            if (!query.done(HyperQuery::SQState::SQ_REPLY)) {
+            if (!query.done(HyperQuery::SQState::SQ_PATTERN)) {
                 if (!execute_ops(query)) return;  // outstanding
             }
 
         } catch (const char *msg) {
-            //query.result.set_status_code(UNKNOWN_ERROR);
+            query.result.set_status_code(UNKNOWN_ERROR);
         } catch (WukongException &ex) {
-            //query.result.set_status_code(ex.code());
+            query.result.set_status_code(ex.code());
         }
         // 6. Reply
         query.shrink();

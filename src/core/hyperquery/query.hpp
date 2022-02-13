@@ -177,7 +177,7 @@ public:
     public:
         ResultTable() { }
 
-        int col_num;
+        int col_num = 0;
         std::vector<DataType> result_data;
 
         void load_data(std::vector<DataType> &update) {
