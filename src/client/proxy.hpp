@@ -458,8 +458,6 @@ public:
         }
         monitor.finish();
 
-        reply.result.heid_res_table.print_table();
-
         // Check result status
         if (reply.result.status_code == SUCCESS) {
             logstream(LOG_INFO) << "(last) result row num: " << reply.result.row_num
