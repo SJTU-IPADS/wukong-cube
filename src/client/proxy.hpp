@@ -198,6 +198,8 @@ public:
 
     void setpid(SPARQLQuery &r) { r.pqid = coder.get_and_inc_qid(); }
 
+    void setpid(HyperQuery &r) { r.pqid = coder.get_and_inc_qid(); }
+
     void setpid(RDFLoad &r) { r.pqid = coder.get_and_inc_qid(); }
 
     void setpid(GStoreCheck &r) { r.pqid = coder.get_and_inc_qid(); }
@@ -223,6 +225,17 @@ public:
         }
     }
 
+    void send_request(HyperQuery &r) {
+        ASSERT(r.pqid != -1);
+        logstream(LOG_INFO) << "sending hyper query to engine" << LOG_endl;
+
+        // submit the request to a certain server
+        int start_sid = PARTITION(r.pattern_group.get_start());
+        Bundle bundle(r);    
+        logstream(LOG_INFO) << "dev_type is CPU, send to engine. r.pqid=" << r.pqid << LOG_endl;
+        send(bundle, start_sid);
+    }
+
     // Recv reply from engines.
     SPARQLQuery recv_reply(void) {
         Bundle bundle = adaptor->recv();
@@ -232,6 +245,16 @@ public:
                              << ", dev_type=" << (r.dev_type == SPARQLQuery::DeviceType::GPU ? "GPU" : "CPU")
                              << ", #rows=" << r.result.get_row_num() << ", step=" << r.pattern_step
                              << ", done: " << r.done(SPARQLQuery::SQState::SQ_PATTERN) << LOG_endl;
+        return r;
+    }
+
+    HyperQuery recv_hyper_reply(void) {
+        Bundle bundle = adaptor->recv();
+        ASSERT(bundle.type == HYPER_QUERY);
+        HyperQuery r = bundle.get_hyper_query();
+        logstream(LOG_DEBUG) << "Proxy recv_reply: got reply qid=" << r.qid << ", r.pqid=" << r.pqid
+                             << ", #rows=" << r.result.get_row_num() << ", step=" << r.pattern_step
+                             << ", done: " << r.done(HyperQuery::SQState::SQ_PATTERN) << LOG_endl;
         return r;
     }
 
@@ -280,14 +303,81 @@ public:
         }
     }
 
+    // output result of current query
+    void output_result(std::ostream &stream, HyperQuery &q, int sz) {
+        for (int i = 0; i < sz; i++) {
+            stream << i + 1 << ": ";
+
+            // entity
+            for (int j = 0; j < q.result.get_col_num(SID_t); j++) {
+                int id = q.result.get_row_col(i, j);
+                if (str_server->exist(id))
+                    stream << str_server->id2str(id) << "\t";
+                else
+                    stream << id << "\t";
+            }
+
+            // hyperedge
+            for (int j = 0; j < q.result.get_col_num(HEID_t); j++) {
+                int id = q.result.get_row_col(i, j, HEID_t);
+                if (str_server->exist_he(id))
+                    stream << str_server->id2str_he(id) << "\t";
+                else
+                    stream << id << "\t";
+            }
+
+            // TODO: attribute
+            // for (int c = 0; c < q.result.get_attr_col_num(); c++) {
+            //     attr_t tmp = q.result.get_attr_row_col(i, c);
+            //     stream << tmp << "\t";
+            // }
+
+        // #ifdef TRDF_MODE
+        //     // timestamp
+        //     for (int j = 0; j < q.result.get_time_col_num(); j++) {
+        //         int64_t time = q.result.get_time_row_col(i, j);
+        //         stream << time_tool::int2str(time) << "\t";
+        //     }
+        // #endif
+
+            stream << std::endl;
+        }
+    }
+
     // print result of current query to console
     void print_result(SPARQLQuery &q, int row2prt) {
         logstream(LOG_INFO) << "The first " << row2prt << " rows of results: " << LOG_endl;
         output_result(std::cout, q, row2prt);
     }
 
+    // print result of current query to console
+    void print_result(HyperQuery &q, int row2prt) {
+        logstream(LOG_INFO) << "The first " << row2prt << " rows of results: " << LOG_endl;
+        output_result(std::cout, q, row2prt);
+    }
+
     // dump result of current query to specific file
     void dump_result(std::string path, SPARQLQuery &q, int row2prt) {
+        if (boost::starts_with(path, "hdfs:")) {
+            wukong::hdfs &hdfs = wukong::hdfs::get_hdfs();
+            wukong::hdfs::fstream ofs(hdfs, path, true);
+
+            output_result(ofs, q, row2prt);
+            ofs.close();
+        } else {
+            std::ofstream ofs(path);
+            if (!ofs.good()) {
+                logstream(LOG_INFO) << "Can't open/create output file: " << path << LOG_endl;
+                return;
+            }
+
+            output_result(ofs, q, row2prt);
+            ofs.close();
+        }
+    }
+
+    // dump result of hyper query to specific file
+    void dump_result(std::string path, HyperQuery &q, int row2prt) {
         if (boost::starts_with(path, "hdfs:")) {
             wukong::hdfs &hdfs = wukong::hdfs::get_hdfs();
             wukong::hdfs::fstream ofs(hdfs, path, true);
@@ -328,6 +418,68 @@ public:
 
         return 0; // success
     } // end of run_parse_query
+
+    // Run a single hyper query for @cnt times. Command is "-f"
+    // @is: input
+    // @reply: result
+    int run_hyper_query(std::string fname, std::istream &fmt_stream, int nopts,
+                         int mt_factor, bool snd2gpu, int cnt, int nlines, std::string ofname,
+                         HyperQuery &reply, Monitor &monitor) {
+        uint64_t start, end;
+        HyperQuery request;
+
+        // Parse the SPARQL query
+        start = timer::get_usec();
+        int ret = parser.parse(fname, request);
+        if (ret) ASSERT_ERROR_CODE(false, ret);
+        end = timer::get_usec();
+        logstream(LOG_INFO) << "Parsing time: " << (end - start) << " usec" << LOG_endl;
+        request.mt_factor = std::min(mt_factor, Global::mt_threshold);
+
+        // Print a WARNING to enable multi-threading for potential (heavy) query
+        // TODO: optimizer could recognize the real heavy query
+        // if (request.start_from_index() // HINT: start from index
+        //         && !snd2gpu  // accelerated by GPU
+        //         && (mt_factor == 1 && Global::mt_threshold > 1) ) {
+        //     logstream(LOG_EMPH) << "The query starts from an index vertex, "
+        //                         << "you could use option -m to accelerate it."
+        //                         << LOG_endl;
+        // }
+
+        // Execute the hyper query
+        monitor.init();
+        for (int i = 0; i < cnt; i++) {
+            setpid(request);
+            // only take back results of the last request if not silent
+            request.result.blind = i < (cnt - 1) ? true : Global::silent;
+
+            send_request(request);
+            reply = recv_hyper_reply();
+        }
+        monitor.finish();
+
+        reply.result.heid_res_table.print_table();
+
+        // Check result status
+        if (reply.result.status_code == SUCCESS) {
+            logstream(LOG_INFO) << "(last) result row num: " << reply.result.row_num
+                                << " , col num:" << reply.result.get_col_num() << LOG_endl;
+
+            // print or dump results
+            if (!Global::silent) {
+                if (nlines > 0)
+                    print_result(reply, std::min(nlines, reply.result.row_num));
+                if (ofname != "")
+                    dump_result(ofname, reply, reply.result.row_num);
+            }
+        } else {
+            logstream(LOG_ERROR)
+                    << "Query failed [ERRNO " << reply.result.status_code << "]: "
+                    << ERR_MSG(reply.result.status_code) << LOG_endl;
+        }
+
+        return 0; // success
+    } // end of run_hyper_query
 
     // Run a single query for @cnt times. Command is "-f"
     // @is: input

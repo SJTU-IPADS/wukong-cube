@@ -593,10 +593,10 @@ static void run_sparql(Proxy * proxy, int argc, char **argv)
 #endif
 
         /// do sparql
-        SPARQLQuery reply;
+        HyperQuery reply;
         Monitor monitor;
         try {
-            proxy->run_single_query(fname, fmt_stream, nopts, mfactor, snd2gpu,
+            proxy->run_hyper_query(fname, fmt_stream, nopts, mfactor, snd2gpu,
                                     cnt, nlines, ofname, reply, monitor);
         } catch (WukongException &ex) {
             logstream(LOG_ERROR) << "Query failed [ERRNO " << ex.code()

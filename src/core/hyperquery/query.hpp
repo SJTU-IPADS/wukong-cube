@@ -62,14 +62,14 @@ using namespace boost::archive;
 class HyperQuery {
 private:
     friend class boost::serialization::access;
-    template <typename Archive>
-    void serialize(Archive &ar, const unsigned int version) {
-        ar & qid;
-        ar & pqid;
-        ar & pattern_step;
-        ar & pattern_group;
-        ar & result;
-    }
+    // template <typename Archive>
+    // void serialize(Archive &ar, const unsigned int version) {
+    //     ar & qid;
+    //     ar & pqid;
+    //     ar & pattern_step;
+    //     ar & pattern_group;
+    //     ar & result;
+    // }
 
 public:
     enum SQState { SQ_PATTERN = 0, SQ_UNION, SQ_FILTER, SQ_OPTIONAL, SQ_FINAL, SQ_REPLY };
@@ -80,25 +80,27 @@ public:
     class Pattern {
     private:
         friend class boost::serialization::access;
-        template <typename Archive>
-        void serialize(Archive &ar, const unsigned int version) {
-            ar & type;
-            ar & input_eids;
-            ar & input_vids;
-            ar & output_var;
-            ar & he_type;
-            ar & bind_node;
-            ar & k;
-        }
+        // template <typename Archive>
+        // void serialize(Archive &ar, const unsigned int version) {
+        //     ar & type;
+        //     ar & input_eids;
+        //     ar & input_vids;
+        //     ar & output_var;
+        //     ar & he_type;
+        //     ar & bind_node;
+        //     ar & k;
+        // }
 
     public:
         PatternType type;
         
+        // TODO: add input_vars vector
         // multiple input and single output
         std::vector<heid_t> input_eids;
         std::vector<ssid_t> input_vids;
         ssid_t output_var;
 
+        // TODO: aggreate all parameters into 1 sid_t vector
         // type
         sid_t he_type;
 
@@ -137,10 +139,10 @@ public:
     class PatternGroup {
     private:
         friend class boost::serialization::access;
-        template <typename Archive>
-        void serialize(Archive &ar, const unsigned int version) {
-            ar & patterns;
-        }
+        // template <typename Archive>
+        // void serialize(Archive &ar, const unsigned int version) {
+        //     ar & patterns;
+        // }
 
     public:
         std::vector<Pattern> patterns;
@@ -229,33 +231,43 @@ public:
             col_num = 0;
             result_data.clear();
         }
+
+        void print_table() {
+            size_t row_num = col_num > 0? (result_data.size() / col_num): 0;
+            logstream(LOG_INFO) << "table [ " << col_num << " cols, " << row_num << " rows ]:" << LOG_endl;
+            for (size_t r = 0; r < row_num; r++) {
+                for (size_t c = 0; c < col_num; c++) 
+                    logstream(LOG_INFO) << "\t" << get_row_col(r, c) << "\t";
+                logstream(LOG_INFO) << "\n";
+            }
+        }
     };
 
     class Result {
     private:
         friend class boost::serialization::access;
-        template <typename Archive>
-        void serialize(Archive &ar, const unsigned int version) {
-            ar & col_nums;
-            ar & row_num;
-            ar & blind;
-            ar & status_code;
-            ar & nvars;
-            ar & required_vars;
-            ar & v2c_map;
-            if(get_col_num(TYPE_VERTEX) > 0) {
-                ar & vid_res_table;
-            }
-            if(get_col_num(TYPE_EDGE) > 0) {
-                ar & heid_res_table;
-            }
-            if(get_col_num(TYPE_FLOAT) > 0) {
-                ar & float_res_table;
-            }
-            if(get_col_num(TYPE_DOUBLE) > 0) {
-                ar & double_res_table;
-            }
-        }
+        // template <typename Archive>
+        // void serialize(Archive &ar, const unsigned int version) {
+        //     ar & col_nums;
+        //     ar & row_num;
+        //     ar & blind;
+        //     ar & status_code;
+        //     ar & nvars;
+        //     ar & required_vars;
+        //     ar & v2c_map;
+        //     if(get_col_num(TYPE_VERTEX) > 0) {
+        //         ar & vid_res_table;
+        //     }
+        //     if(get_col_num(TYPE_EDGE) > 0) {
+        //         ar & heid_res_table;
+        //     }
+        //     if(get_col_num(TYPE_FLOAT) > 0) {
+        //         ar & float_res_table;
+        //     }
+        //     if(get_col_num(TYPE_DOUBLE) > 0) {
+        //         ar & double_res_table;
+        //     }
+        // }
 
 
     public:
@@ -402,20 +414,22 @@ public:
             }
         }
 
-        int get_col_num(data_type type = SID_t) {
+        int get_col_num(data_type type = ALL_t) {
             switch (type) {
             case SID_t:
-                vid_res_table.get_col_num();
-                break;
+                return vid_res_table.get_col_num();
             case HEID_t:
-                heid_res_table.get_col_num();
-                break;
+                return heid_res_table.get_col_num();
             case FLOAT_t:
-                float_res_table.get_col_num();
-                break;
+                return float_res_table.get_col_num();
             case DOUBLE_t:
-                double_res_table.get_col_num();
-                break;
+                return double_res_table.get_col_num();
+            case ALL_t:
+                return vid_res_table.get_col_num() + 
+                        heid_res_table.get_col_num() + 
+                        float_res_table.get_col_num() + 
+                        double_res_table.get_col_num();
+            default: ASSERT(false);
             }
         }
 
@@ -604,6 +618,125 @@ public:
 };
 
 } // namespace wukong
+
+namespace boost {
+namespace serialization {
+// char occupied = 0;
+// char empty = 1;
+
+template<class Archive>
+void save(Archive &ar, const wukong::HyperQuery::Pattern &t, unsigned int version) {
+    ar << t.type;
+    ar << t.input_eids;
+    ar << t.input_vids;
+    ar << t.output_var;
+    ar << t.he_type;
+    ar << t.bind_node;
+    ar << t.k;
+}
+
+template<class Archive>
+void load(Archive &ar, wukong::HyperQuery::Pattern &t, unsigned int version) {
+    ar >> t.type;
+    ar >> t.input_eids;
+    ar >> t.input_vids;
+    ar >> t.output_var;
+    ar >> t.he_type;
+    ar >> t.bind_node;
+    ar >> t.k;
+}
+
+template<class Archive>
+void save(Archive &ar, const wukong::HyperQuery::PatternGroup &t, unsigned int version) {
+    ar << t.patterns;
+}
+
+template<class Archive>
+void load(Archive &ar, wukong::HyperQuery::PatternGroup &t, unsigned int version) {
+    ar >> t.patterns;
+}
+
+template<class Archive>
+void save(Archive &ar, const wukong::HyperQuery::Result &t, unsigned int version) {
+    ar << t.col_nums;
+    ar << t.row_num;
+    ar << t.blind;
+    ar << t.status_code;
+    ar << t.nvars;
+    ar << t.required_vars;
+    ar << t.v2c_map;
+    ar << t.vid_res_table.col_num;
+    ar << t.heid_res_table.col_num;
+    ar << t.float_res_table.col_num;
+    ar << t.double_res_table.col_num;
+    if(t.vid_res_table.get_col_num() > 0) {
+        ar << t.vid_res_table.result_data;
+    }
+    if(t.heid_res_table.get_col_num() > 0) {
+        // printf("saving HyperQuery::Resulttable with %lu items\n", t.heid_res_table.result_data.size());
+        ar << t.heid_res_table.result_data;
+    }
+    if(t.float_res_table.get_col_num() > 0) {
+        ar << t.float_res_table.result_data;
+    }
+    if(t.double_res_table.get_col_num() > 0) {
+        ar << t.double_res_table.result_data;
+    }
+}
+
+template<class Archive>
+void load(Archive & ar, wukong::HyperQuery::Result &t, unsigned int version) {
+    // printf("loading HyperQuery::Result\n");
+    ar >> t.col_nums;
+    ar >> t.row_num;
+    ar >> t.blind;
+    ar >> t.status_code;
+    ar >> t.nvars;
+    ar >> t.required_vars;
+    ar >> t.v2c_map;
+    ar >> t.vid_res_table.col_num;
+    ar >> t.heid_res_table.col_num;
+    ar >> t.float_res_table.col_num;
+    ar >> t.double_res_table.col_num;
+    if(t.vid_res_table.get_col_num() > 0) {
+        ar >> t.vid_res_table.result_data;
+    }
+    if(t.heid_res_table.get_col_num() > 0) {
+        ar >> t.heid_res_table.result_data;
+    }
+    if(t.float_res_table.get_col_num() > 0) {
+        ar >> t.float_res_table.result_data;
+    }
+    if(t.double_res_table.get_col_num() > 0) {
+        ar >> t.double_res_table.result_data;
+    }
+}
+
+template<class Archive>
+void save(Archive & ar, const wukong::HyperQuery &t, unsigned int version) {
+    ar << t.qid;
+    ar << t.pqid;
+    ar << t.pattern_step;
+    ar << t.pattern_group;
+    ar << t.result;
+}
+
+template<class Archive>
+void load(Archive & ar, wukong::HyperQuery &t, unsigned int version) {
+    ar >> t.qid;
+    ar >> t.pqid;
+    ar >> t.pattern_step;
+    ar >> t.pattern_group;
+    ar >> t.result;
+}
+
+}
+}
+
+BOOST_SERIALIZATION_SPLIT_FREE(wukong::HyperQuery::Pattern);
+BOOST_SERIALIZATION_SPLIT_FREE(wukong::HyperQuery::PatternGroup);
+BOOST_SERIALIZATION_SPLIT_FREE(wukong::HyperQuery::Result);
+BOOST_SERIALIZATION_SPLIT_FREE(wukong::HyperQuery);
 
 // remove class information at the cost of losing auto versioning,
 // which is useless currently because wukong use boost serialization to transmit data
