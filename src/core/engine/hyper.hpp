@@ -54,8 +54,38 @@
 
 namespace wukong {
 
+template<class DataType>
+void intersect_set(std::set<DataType>& a, std::set<DataType>& b) {
+    for (auto iter = std::begin(a); iter != std::end(a);) {
+        auto res = b.find(*iter);
+        if (res == b.end()) {
+            iter = a.erase(iter);
+        } else {
+            iter++;
+        }
+    }
+}
+
+template<class DataType>
+void intersect_set_v2(std::set<DataType>& a, DataType* b, uint64_t sz) {
+    std::set<DataType> new_a;
+    for(int i = 0; i < sz; i++) {
+        if(a.count(b[i])) {
+            new_a.insert(b[i]);
+        }
+    }
+    new_a.swap(a);
+}
+
+template<class DataType>
+void union_set(std::set<DataType>& a, std::set<DataType>& b) {
+    for (auto&& item : b) {
+        a.insert(item);
+    }
+}
+
 // Returns the number of identical items among 2 sets
-uint32_t intersect_set(std::set<sid_t> a, std::set<sid_t> b) {
+uint32_t set_intersect_num(std::set<sid_t> a, std::set<sid_t> b) {
     uint32_t intersect_num = 0;
     for (auto &&ai : a) {
         auto res = b.find(ai);
@@ -96,19 +126,78 @@ private:
 
     void op_get_vertices(HyperQuery& query, HyperQuery::Pattern& op) {
         logstream(LOG_INFO) << "Execute V() op:" << LOG_endl;
-        // TODO-zyw:
+        sid_t type_id = op.he_type;
+        ssid_t end = op.output_var;
+
+        HyperQuery::Result& res = query.result;
+
+        // MUST be the first triple pattern
+        ASSERT_ERROR_CODE(res.empty(), FIRST_PATTERN_ERROR);
+
+        uint64_t sz = 0;
+        edge_t* vids = graph->get_index(tid, type_id, IN, sz);
+        std::vector<sid_t> updated_result_table;
+        for(uint64_t k = 0; k < sz; k++)
+            updated_result_table.push_back(vids[k].val);
+
+        // update result and metadata
+        res.vid_res_table.load_data(updated_result_table);
+        res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_VERTEX));
+        res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_VERTEX) + 1, SID_t);
+        res.update_nrows();
     }
 
     void op_get_edges(HyperQuery& query, HyperQuery::Pattern& op) {
         logstream(LOG_INFO) << "Execute E() op:" << LOG_endl;
-        // TODO-zyw:
+        sid_t type_id = op.he_type;
+        ssid_t end = op.output_var;
+
+        HyperQuery::Result& res = query.result;
+
+        // MUST be the first triple pattern
+        ASSERT_ERROR_CODE(res.empty(), FIRST_PATTERN_ERROR);
+
+        uint64_t sz = 0;
+        heid_t* eids = graph->get_heids_by_type(tid, type_id, sz);
+        std::vector<heid_t> updated_result_table;
+        for(uint64_t k = 0; k < sz; k++)
+            updated_result_table.push_back(eids[k]);
+
+        // update result and metadata
+        res.heid_res_table.load_data(updated_result_table);
+        res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_EDGE));
+        res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_EDGE) + 1, HEID_t);
+        res.update_nrows();
     }
 
     void op_get_e2v(HyperQuery& query, HyperQuery::Pattern& op) {
         logstream(LOG_INFO) << "Execute containV() op:" << LOG_endl;
         // multi-edges e2v
         if(op.input_eids.size() > 1) {
-            // TODO:
+            heid_t first_e = op.input_eids[0];
+
+            ssid_t end = op.output_var;
+
+            HyperQuery::Result& res = query.result;
+
+            // MUST be the first triple pattern
+            ASSERT_ERROR_CODE(res.empty(), FIRST_PATTERN_ERROR);
+
+            uint64_t sz = 0;
+            sid_t* vids = graph->get_edge_by_heid(tid, first_e, sz);
+            std::set<sid_t> result_vids(vids, vids + sz);
+            for(int i = 1; i < op.input_eids.size(); i++) {
+                sid_t* other_vids = graph->get_edge_by_heid(tid, op.input_eids[i], sz);
+                intersect_set_v2(result_vids, other_vids, sz);
+            }
+
+            std::vector<sid_t> updated_result_table(std::begin(result_vids), std::end(result_vids));
+
+            // update result and metadata
+            res.vid_res_table.load_data(updated_result_table);
+            res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_VERTEX));
+            res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_VERTEX) + 1, SID_t);
+            res.update_nrows();
         }
         // single-const-edge e2v
         else if (op.input_eids.size() == 1) {
@@ -174,7 +263,30 @@ private:
         ASSERT_GT(op.input_vids.size(), 0);
         // multi-vertices v2e
         if(op.input_vids.size() > 1) {
-            // TODO:
+            sid_t first_v = op.input_vids[0];
+            sid_t htid = op.he_type;
+            ssid_t end = op.output_var;
+
+            HyperQuery::Result& res = query.result;
+
+            // MUST be the first triple pattern
+            ASSERT_ERROR_CODE(res.empty(), FIRST_PATTERN_ERROR);
+
+            uint64_t sz = 0;
+            heid_t* eids = graph->get_heids_by_vertex_and_type(tid, first_v, htid, sz);
+            std::set<heid_t> result_eids(eids, eids + sz);
+            for(int i = 1; i < op.input_vids.size(); i++) {
+                heid_t* other_eids = graph->get_heids_by_vertex_and_type(tid, op.input_vids[i], htid, sz);
+                intersect_set_v2(result_eids, other_eids, sz);
+            }
+
+            std::vector<heid_t> updated_result_table(std::begin(result_eids), std::end(result_eids));
+
+            // update result and metadata
+            res.heid_res_table.load_data(updated_result_table);
+            res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_EDGE));
+            res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_EDGE) + 1, HEID_t);
+            res.update_nrows();
         }
         // single-const-vertex v2e
         else if (op.input_vids[0] > 0) {
@@ -274,7 +386,7 @@ private:
             switch (op.type)
             {
             case HyperQuery::PatternType::E2E_ITSCT:
-                return (intersect_set(known, unknown) >= op.k);
+                return (set_intersect_num(known, unknown) >= op.k);
             case HyperQuery::PatternType::E2E_CT:
                 return (contain_set(known, unknown));
             case HyperQuery::PatternType::E2E_IN:
