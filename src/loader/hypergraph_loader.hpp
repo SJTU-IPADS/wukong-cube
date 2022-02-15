@@ -242,6 +242,7 @@ protected:
                 ASSERT_EQ(c, '|');
 
                 // read vids
+                edge.vertices.clear();
                 do {
                     file >> vid >> std::ws;
                     ASSERT(is_hvid(vid));

@@ -71,6 +71,13 @@ public:
         }
         return false;
     }
+
+    // for debugging
+    void print_he(int tid) const {
+        printf("[tid %d ]HyperEdge %lu: type = %u, vids = ", tid, id, edge_type);
+        for (auto &&vid : vertices) printf("%u ", vid);
+        printf("\n");
+    }
 };
 
 struct v2etriple_sort {
