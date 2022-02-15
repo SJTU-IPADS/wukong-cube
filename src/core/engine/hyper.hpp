@@ -85,7 +85,8 @@ void union_set(std::set<DataType>& a, std::set<DataType>& b) {
 }
 
 // Returns the number of identical items among 2 sets
-uint32_t set_intersect_num(std::set<sid_t> a, std::set<sid_t> b) {
+template<class DataType>
+uint32_t intersect_set_num(std::set<DataType> a, std::set<DataType> b) {
     uint32_t intersect_num = 0;
     for (auto &&ai : a) {
         auto res = b.find(ai);
@@ -98,7 +99,8 @@ uint32_t set_intersect_num(std::set<sid_t> a, std::set<sid_t> b) {
 }
 
 // Returns true if a contains b
-bool contain_set(std::set<sid_t> a, std::set<sid_t> b) {
+template<class DataType>
+bool contain_set(std::set<DataType> a, std::set<DataType> b) {
     for (auto &&ai : a) {
         auto res = b.find(ai);
         if (res != b.end()) {
@@ -356,11 +358,86 @@ private:
     }
 
     void op_get_v2v(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_INFO) << "Execute intersectV() op:" << LOG_endl;
+        logstream(LOG_INFO) << "Execute V2V op:" << LOG_endl;
+        std::vector<sid_t> &input_vids = op.input_vids;
+        std::vector<ssid_t> &input_vars = op.input_vars;
+        std::vector<heid_t> &input_eids = op.input_eids;
+        HyperQuery::Result &res = query.result;
+        HyperQuery::ResultTable<sid_t> &res_vtable = res.vid_res_table;
+
+        // check if the pattern is valid
+        ASSERT_ERROR_CODE(input_eids.empty(), VERTEX_INVALID);
+        ASSERT_ERROR_CODE((!input_vars.empty() && query.pattern_step != 0) ||
+                            (input_vars.empty() && query.pattern_step == 0), VERTEX_INVALID);
+        ASSERT_ERROR_CODE(op.params.size() == 2, PARAMETER_INVALID);  // params: he_type
+        ASSERT_ERROR_CODE(op.params[0].type == SID_t && is_htid(op.params[0].sid), PARAMETER_INVALID);
+        ASSERT_ERROR_CODE(op.params[1].type == INT_t && op.params[1].num > 0, PARAMETER_INVALID);
+        sid_t &he_type = op.params[0].sid;
+        int limit = op.params[1].num;
+        ASSERT(input_vars.empty());     // TODO: extend the pattern to input vars
+        // std::vector<int> input_var_cols;
+        // for (auto &&input : op.input_vars) {
+        //     int col = res.var2col(input);
+        //     ASSERT_ERROR_CODE(col != NO_RESULT_COL, VERTEX_INVALID);
+        //     input_var_cols.push_back(col);
+        // }
+
+        uint64_t he_sz, vid_sz;
+        sid_t* vids;
+        heid_t* heids;
+        HyperQuery::ResultTable<sid_t> updated_result_table;
+
+        // get hyperedges of the const vids first
+        // logstream(LOG_INFO) << "const vid size = " << input_vids.size() << LOG_endl;
+        std::vector<std::set<heid_t>> const_hes(input_vids.size());
+        for (size_t i = 0; i < input_vids.size(); i++) {
+            heids = graph->get_heids_by_vertex_and_type(tid, input_vids[i], he_type, he_sz);
+            // logstream(LOG_INFO) << "const vid " << input_vids[i] << ": ";
+            for (size_t k = 0; k < he_sz; k++) {
+                // logstream(LOG_INFO) << heids[k] << " ";
+                const_hes[i].insert(heids[k]);
+            }
+            // logstream(LOG_INFO) << LOG_endl;
+        }
+
+        // get all possible vid by hyper type
+        vids = graph->get_vids_by_htype(tid, he_type, vid_sz);
+
+        // iterate through each hyper edge, and compare them to each const hyperedge
+        for (size_t i = 0; i < vid_sz; i++) {
+            std::set<heid_t> curr_he;
+            
+            // get hyperedge content
+            heids = graph->get_heids_by_vertex_and_type(tid, vids[i], he_type, he_sz);
+            // logstream(LOG_INFO) << "curr vid " << vids[i] << " size = " << he_sz << ": ";
+            for (size_t k = 0; k < he_sz; k++) {
+                // logstream(LOG_INFO) << heids[k] << " ";
+                curr_he.insert(heids[k]);
+            }
+            // logstream(LOG_INFO) << LOG_endl;
+
+            // check if intersect with each const hyperedge
+            bool flag = true;
+            for (auto &&const_he : const_hes)
+                if (intersect_set_num(const_he, curr_he) < limit) {flag = false; break;}
+            if (!flag) continue;
+            else if (input_vars.empty()) {
+                updated_result_table.result_data.push_back(vids[i]);
+                continue;
+            }
+        }
+
+        // update result
+        res_vtable.swap(updated_result_table);
+        res.add_var2col(op.output_var, res.get_col_num(SID_t), SID_t);
+        res.set_col_num(res.get_col_num(SID_t) + 1, SID_t);
+        res.update_nrows();
+        // increase pattern step
+        query.pattern_step++;
     }
 
     void op_get_e2e(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_INFO) << "Execute E2E intersect op:" << LOG_endl;
+        logstream(LOG_INFO) << "Execute E2E op:" << LOG_endl;
         HyperQuery::PatternType &type = op.type;
         std::vector<sid_t> &input_vids = op.input_vids;
         std::vector<ssid_t> &input_vars = op.input_vars;
@@ -398,7 +475,7 @@ private:
             switch (op.type)
             {
             case HyperQuery::PatternType::E2E_ITSCT:
-                return (set_intersect_num(known, unknown) >= limit);
+                return (intersect_set_num(known, unknown) >= limit);
             case HyperQuery::PatternType::E2E_CT:
                 return (contain_set(known, unknown));
             case HyperQuery::PatternType::E2E_IN:
