@@ -615,7 +615,7 @@ private:
 
     bool execute_ops(HyperQuery &query) {
         uint64_t time, access;
-        logstream(LOG_INFO) << "[" << sid << "-" << tid << "] execute ops of "
+        logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "] execute ops of "
                              << "Q(pqid=" << query.pqid << ", qid=" << query.qid << ")"
                              << LOG_endl;
         do {

@@ -227,12 +227,11 @@ public:
 
     void send_request(HyperQuery &r) {
         ASSERT(r.pqid != -1);
-        logstream(LOG_INFO) << "sending hyper query to engine" << LOG_endl;
+        logstream(LOG_DEBUG) << "Sending HyperQuery to engine. r.pqid=" << r.pqid << LOG_endl;
 
         // submit the request to a certain server
         int start_sid = PARTITION(r.pattern_group.get_start());
         Bundle bundle(r);    
-        logstream(LOG_INFO) << "dev_type is CPU, send to engine. r.pqid=" << r.pqid << LOG_endl;
         send(bundle, start_sid);
     }
 
