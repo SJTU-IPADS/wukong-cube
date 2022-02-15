@@ -100,17 +100,16 @@ PATTERN: PATTERN_ELEMENT_GROUP PATTERN_META PATTERN_ELEMENT {
 PATTERN_ELEMENT_GROUP: PATTERN_ELEMENT {$$=parser->makeElementList($1, NULL);} 
                     | lbracket PATTERN_ELEMENT_LIST rbracket {$$ = $2;}
 
+PATTERN_META: buildin colon PATTERN_TYPE {parser->addPatternMeta($3, NULL);}
+            | buildin colon PATTERN_TYPE lparen PATTERN_ELEMENT_LIST rparen {parser->addPatternMeta($3, $5);}
+
 PATTERN_ELEMENT_LIST: PATTERN_ELEMENT {$$=parser->makeElementList($1, NULL);}
                     | PATTERN_ELEMENT comma PATTERN_ELEMENT_LIST {$$=parser->makeElementList($1, $3);}
-
-PATTERN_META: buildin colon PATTERN_TYPE {parser->addPatternMeta($3, NULL, 0);}
-            | buildin colon PATTERN_TYPE lparen PATTERN_ELEMENT rparen {parser->addPatternMeta($3, $5, 0);}
-            | buildin colon PATTERN_TYPE lparen integer rparen {parser->addPatternMeta($3, NULL, atoi($5));}
-            | buildin colon PATTERN_TYPE lparen PATTERN_ELEMENT comma integer rparen {parser->addPatternMeta($3, $5, atoi($7));}
 
 PATTERN_ELEMENT: iri {$$=parser->makeIriElement($1, false);}
                 | identifier colon identifier {$$=parser->makePrefixIriElement($1,$3,false);}
                 | variable {$$=parser->makeVariableElement($1);}
+                | integer {$$=parser->makeIntElement(atoi($1));}
 
 PATTERN_TYPE: edges {$$=HyperParser::PatternType::V2E;}
             | vertices {$$=HyperParser::PatternType::E2V;}

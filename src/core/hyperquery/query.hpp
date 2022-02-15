@@ -75,6 +75,36 @@ public:
     enum SQState { SQ_PATTERN = 0, SQ_UNION, SQ_FILTER, SQ_OPTIONAL, SQ_FINAL, SQ_REPLY };
     enum PatternType { GV, GE, GP, V2E, E2V, E2E_ITSCT, E2E_CT, E2E_IN, V2V, LAST_TYPE};
 
+    class Param {
+        friend class boost::serialization::access;
+    
+    public:
+        data_type type = SID_t;
+        sid_t sid = 0;
+        heid_t heid = 0;
+        int num = 0;
+
+        Param() {}
+        Param(data_type type, sid_t sid): type(type), sid(sid) {ASSERT_EQ(type, SID_t);}
+        Param(data_type type, heid_t heid): type(type), heid(heid) {ASSERT_EQ(type, HEID_t);}
+        Param(data_type type, int num): type(type), num(num) {ASSERT_EQ(type, INT_t);}
+
+        void print_param() const {
+            static const char *ParamTypeName[7] = { "SID_t", "HEID_t", "INT_t", "FLOAT_t", "DOUBLE_t", "TIME_t", "ALL_t"};
+            
+            // TODO: log error            
+            logstream(LOG_INFO) << "(" << ParamTypeName[type] << ")";
+            switch(type) {
+            case SID_t:
+                logstream(LOG_INFO) << sid;
+            case HEID_t:
+                logstream(LOG_INFO) << heid;
+            case INT_t:
+                logstream(LOG_INFO) << num;
+            }
+            logstream(LOG_INFO) << " ";
+        }
+    };
 
     // hyper pattern
     class Pattern {
@@ -94,45 +124,53 @@ public:
     public:
         PatternType type;
         
-        // TODO: add input_vars vector
         // multiple input and single output
+        std::vector<sid_t> input_vids;
+        std::vector<ssid_t> input_vars;
         std::vector<heid_t> input_eids;
-        std::vector<ssid_t> input_vids;
         ssid_t output_var;
 
-        // TODO: aggreate all parameters into 1 sid_t vector
-        // type
-        sid_t he_type;
+        // aggreate all parameters in this single pattern into 1 sid_t vector
+        std::vector<Param> params;
 
         // other constraints of the hyper pattern
-        sid_t bind_node = 0;
-        uint32_t k = 0;
+        // sid_t he_type;
+        // sid_t bind_node = 0;
+        // uint32_t k = 0;
 
         Pattern() {}
 
         Pattern(PatternType type,
-                sid_t he_type,
-                std::vector<ssid_t> input_vids,
+                std::vector<sid_t> input_vids,
+                std::vector<ssid_t> input_vars,
                 std::vector<heid_t> input_eids,
-                ssid_t output_var, sid_t bind = 0, uint32_t k = 0):
-                type(type), he_type(he_type), input_vids(input_vids), input_eids(input_eids),
-                output_var(output_var), bind_node(bind), k(k) {
-            ASSERT_GT(input_vids.size(), 0);
+                ssid_t output_var,
+                std::vector<Param> params):
+                type(type), 
+                input_vids(input_vids), 
+                input_eids(input_eids), 
+                input_vars(input_vars),
+                output_var(output_var), 
+                params(params) {
+            ASSERT_GT(input_vids.size() + input_vars.size() + input_eids.size(), 0);
             ASSERT_LT(output_var, 0);
-            ASSERT_GE(bind_node, 0);
-            ASSERT_GE(k, 0);
         }
     
         void print_pattern() const {
             static const char *PatternTypeName[9] = { "GV", "GE", "GP", "V2E", "E2V", "E2E_ITSCT", "E2E_CT", "E2E_IN", "V2V"};
 
-            logstream(LOG_INFO) << "\t[ ";
-            for (auto &&var : input_vids)
+            logstream(LOG_INFO) << "\t[ (vids) ";
+            for (auto &&vid : input_vids)
+                logstream(LOG_INFO) << vid << " "; 
+            logstream(LOG_INFO) << " | (eids) "; 
+            for (auto &&eid : input_eids)
+                logstream(LOG_INFO) << eid << " "; 
+            logstream(LOG_INFO) << " | (vars) "; 
+            for (auto &&var : input_vars)
                 logstream(LOG_INFO) << var << " "; 
-            logstream(LOG_INFO) << " ]\t" << PatternTypeName[type] 
-                                << "( bind_node = " << bind_node
-                                << ", k = " << k 
-                                << " )\t==>\t" <<output_var << LOG_endl; 
+            logstream(LOG_INFO) << " ]\t" << PatternTypeName[type] << " params( ";
+            for (auto &&param : params) param.print_param();   
+            logstream(LOG_INFO) << " )\t==>\t" <<output_var << LOG_endl; 
         }
     };
 
@@ -155,8 +193,14 @@ public:
 
         // used to calculate dst_sid
         ssid_t get_start() {
-            if (this->patterns.size() > 0)
-                return this->patterns[0].input_vids[0];
+            if (this->patterns.size() > 0) {
+                Pattern &pt = this->patterns[0];
+                if (pt.input_eids.size() > 0)
+                    return pt.input_eids[0];
+                else if (pt.input_vids.size() > 0)
+                    return pt.input_vids[0];
+                else return BLANK_ID;
+            }
             else
                 ASSERT_ERROR_CODE(false, UNKNOWN_PATTERN);
             return BLANK_ID;
@@ -625,14 +669,51 @@ namespace serialization {
 // char empty = 1;
 
 template<class Archive>
+void save(Archive & ar, const wukong::HyperQuery::Param &t, unsigned int version) {
+    ar << t.type;
+    switch (t.type)
+    {
+    case wukong::SID_t:
+        ar << t.sid;
+        break;
+    case wukong::HEID_t:
+        ar << t.heid;
+        break;
+    case wukong::INT_t:
+        ar << t.num;
+        break;
+    default:
+        ASSERT(false);
+    }
+}
+
+template<class Archive>
+void load(Archive & ar, wukong::HyperQuery::Param &t, unsigned int version) {
+    ar >> t.type;
+    switch (t.type)
+    {
+    case wukong::SID_t:
+        ar >> t.sid;
+        break;
+    case wukong::HEID_t:
+        ar >> t.heid;
+        break;
+    case wukong::INT_t:
+        ar >> t.num;
+        break;
+    default:
+        ASSERT(false);
+    }
+}
+
+template<class Archive>
 void save(Archive &ar, const wukong::HyperQuery::Pattern &t, unsigned int version) {
     ar << t.type;
     ar << t.input_eids;
     ar << t.input_vids;
+    ar << t.input_vars;
     ar << t.output_var;
-    ar << t.he_type;
-    ar << t.bind_node;
-    ar << t.k;
+    ar << t.params;
 }
 
 template<class Archive>
@@ -640,10 +721,9 @@ void load(Archive &ar, wukong::HyperQuery::Pattern &t, unsigned int version) {
     ar >> t.type;
     ar >> t.input_eids;
     ar >> t.input_vids;
+    ar >> t.input_vars;
     ar >> t.output_var;
-    ar >> t.he_type;
-    ar >> t.bind_node;
-    ar >> t.k;
+    ar >> t.params;
 }
 
 template<class Archive>
@@ -733,6 +813,7 @@ void load(Archive & ar, wukong::HyperQuery &t, unsigned int version) {
 }
 }
 
+BOOST_SERIALIZATION_SPLIT_FREE(wukong::HyperQuery::Param);
 BOOST_SERIALIZATION_SPLIT_FREE(wukong::HyperQuery::Pattern);
 BOOST_SERIALIZATION_SPLIT_FREE(wukong::HyperQuery::PatternGroup);
 BOOST_SERIALIZATION_SPLIT_FREE(wukong::HyperQuery::Result);
@@ -741,6 +822,7 @@ BOOST_SERIALIZATION_SPLIT_FREE(wukong::HyperQuery);
 // remove class information at the cost of losing auto versioning,
 // which is useless currently because wukong use boost serialization to transmit data
 // between endpoints running the same code.
+BOOST_CLASS_IMPLEMENTATION(wukong::HyperQuery::Param, boost::serialization::object_serializable);
 BOOST_CLASS_IMPLEMENTATION(wukong::HyperQuery::Pattern, boost::serialization::object_serializable);
 BOOST_CLASS_IMPLEMENTATION(wukong::HyperQuery::PatternGroup, boost::serialization::object_serializable);
 BOOST_CLASS_IMPLEMENTATION(wukong::HyperQuery::Result, boost::serialization::object_serializable);
@@ -750,6 +832,7 @@ BOOST_CLASS_IMPLEMENTATION(wukong::HyperQuery, boost::serialization::object_seri
 // may be created when an archive is loaded.
 // current query data structure does not contain two identical object reference
 // with the same pointer
+BOOST_CLASS_TRACKING(wukong::HyperQuery::Param, boost::serialization::track_never);
 BOOST_CLASS_TRACKING(wukong::HyperQuery::Pattern, boost::serialization::track_never);
 BOOST_CLASS_TRACKING(wukong::HyperQuery::PatternGroup, boost::serialization::track_never);
 BOOST_CLASS_TRACKING(wukong::HyperQuery::Result, boost::serialization::track_never);

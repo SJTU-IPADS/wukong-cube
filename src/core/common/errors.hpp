@@ -42,8 +42,7 @@ enum {
     SETTING_ERROR,
     FIRST_PATTERN_ERROR,
     UNKNOWN_FILTER,
-    BIND_NODE_INVALID,
-    K_INVALID,
+    PARAMETER_INVALID,
     FILE_NOT_FOUND,
     ERROR_LAST
 };
@@ -53,7 +52,7 @@ static const char *err_msgs[ERROR_LAST] = {
     "Everythong is ok",
     "Something wrong happened",
     "Something wrong in the query syntax, fail to parse!",
-    "Unsupported triple pattern.",
+    "Unsupported pattern.",
     "MUST enable attribute support!",
     "NO required variables!",
     "Unsupport UNION on attribute results",
@@ -63,8 +62,7 @@ static const char *err_msgs[ERROR_LAST] = {
     "You may change SETTING files to avoid this error. (e.g. global.hpp/config/...)",
     "Const_X_X or index_X_X must be the first pattern.",
     "Unsupported filter type.",
-    "Invalid Bind node.",
-    "Invalid K value in pattern.",
+    "Invalid Parameters.",
     "Query file not found."};
 
 // An exception

@@ -52,7 +52,7 @@ public:
     /// An element in a graph pattern
     struct Element {
         /// Possible types
-        enum Type { Variable, Literal, IRI, Template, Predicate, TimeStamp };
+        enum Type { Variable, Literal, IRI, Template, Predicate, TimeStamp, Int };
         /// The type
         Type type;
         /// The literal value
@@ -61,6 +61,8 @@ public:
         ssid_t id;
         /// The value of the timestamp
         int64_t timestamp;
+        /// numeric value
+        int num;
 
         Element(){}
 
@@ -69,6 +71,26 @@ public:
             value = "";
             id = 0;
             timestamp = 0;
+        }
+
+        void print_element() const {
+            static const char *ElementTypeName[7] = { "Variable", "Literal", "IRI", "Template", "Predicate", "TimeStamp", "Int"};
+            logstream(LOG_INFO) << "type: " << ElementTypeName[type] << ", value: ";
+            switch (type)
+            {
+            case Variable:
+                logstream(LOG_INFO) << id;
+                break;
+            case IRI:
+                logstream(LOG_INFO) << value;
+                break;
+            case Int:
+                logstream(LOG_INFO) << num;
+                break;
+            default:
+                ASSERT(false);
+            }
+            logstream(LOG_INFO) << LOG_endl;
         }
     };
     typedef std::vector<Element> ElementList;
@@ -79,12 +101,11 @@ public:
         // multi input vars and single output var
         ElementList input_vars;
         Element output_var;
-        // other constraints of the hyper pattern
-        Element bind_node;
-        int k;
+        // other parameter of the hyper pattern
+        ElementList params;
         /// Constructor
-        Pattern(PatternType type, ElementList input, Element output, Element bind_node, int k = 0)
-            : type(type), input_vars(input), output_var(output), bind_node(bind_node), k(k) { }
+        Pattern(PatternType type, ElementList input, Element output, ElementList params)
+            : type(type), input_vars(input), output_var(output), params(params) { }
         /// Destructor
         ~Pattern() {}
     };
@@ -113,8 +134,7 @@ private:
 
     // record pattern meta
     PatternType ty;
-    Element bind_node;
-    int k_meta;
+    ElementList params;
 
     /// Lookup or create a named variable
     ssid_t nameVariable(const std::string &name) {
@@ -226,9 +246,8 @@ public:
         logstream(LOG_DEBUG) << "[HyperParser] add pattern" << LOG_endl; 
     	switch(suffix){
             case Suffix_Dot: case Suffix_Blank:{
-                Pattern* p = new Pattern(ty, *inputs, *output, bind_node, k_meta);
-                bind_node.clear();
-                k_meta = 0;
+                Pattern* p = new Pattern(ty, *inputs, *output, params);
+                params.clear();
                 delete inputs, output;
                 return p;
             }
@@ -237,16 +256,17 @@ public:
         }
 	}
 
-    void addPatternMeta(int type, Element* bind, int k) {
+    // Register meta data in pattern(pattern type + pattern parameters)
+    void addPatternMeta(int type, ElementList* params) {
         logstream(LOG_DEBUG) << "[HyperParser] add pattern meta" << LOG_endl; 
-        ty = static_cast<PatternType>(type);
-        k_meta = k;
-        if (bind) {
-            bind_node = *bind;
-            delete bind;
+        this->ty = static_cast<PatternType>(type);
+        if (params) {
+            this->params = *params;
+            delete params;
         }
     }
 
+    // make ElementList
     ElementList* makeElementList(Element* newElement, ElementList* oldElementList) {
         logstream(LOG_DEBUG) << "[HyperParser] make element list" << LOG_endl; 
         if (!newElement) throw ParserException("Unexpected error making ElementList\n");
@@ -275,7 +295,7 @@ public:
 
 	// Deal with iri pattern element
 	Element* makeIriElement(char* iriValue, bool customGrammar){
-        logstream(LOG_DEBUG) << "make iri element" << LOG_endl; 
+        logstream(LOG_DEBUG) << "[HyperParser] make iri element" << LOG_endl; 
 		Element* result = new Element();
 
         //remove < >
@@ -308,6 +328,15 @@ public:
         result->value += std::string(suffix);
         if (customGrammar) result->type = Element::Template;
         else result->type = Element::IRI;
+        return result;
+    }
+
+    // Deal with int parameters
+    Element* makeIntElement(int num) {
+        logstream(LOG_DEBUG) << "[HyperParser] make num element" << LOG_endl; 
+		Element* result = new Element();
+        result->type = Element::Int;
+        result->num = num;
         return result;
     }
 

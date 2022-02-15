@@ -102,9 +102,43 @@ private:
     // (e.g., <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> 1)
     StringServer *str_server;
 
+    /// HyperParser::PatternType to HyperQuery::PatternType
     HyperQuery::PatternType transfer_type(const HyperParser::PatternType src) {
-        // TODO: finish the conversion(using char ?)
         return static_cast<HyperQuery::PatternType>(src);
+    }
+
+    /// HyperParser::Element to input lists in HyperQuery::Param
+    HyperQuery::Param transfer_param(const HyperParser::Element &e) {
+        switch (e.type) {
+        case HyperParser::Element::IRI:
+        {
+            std::string str = "<" + e.value + ">"; // IRI
+            if (!str_server->exist(str)) {
+                if (!str_server->exist_he(str)) {
+                    logstream(LOG_ERROR) << "Unknown IRI: " + str << LOG_endl;
+                    throw WukongException(SYNTAX_ERROR);
+                } else {
+                    return HyperQuery::Param(HEID_t, str_server->str2id_he(str));
+                }
+            } else {
+                return HyperQuery::Param(SID_t, str_server->str2id(str));
+            }
+        }
+        case HyperParser::Element::Int:
+            ASSERT_GE(e.num, 0);     // int param should be a positive number
+            return HyperQuery::Param(INT_t, e.num);
+        default:
+            throw WukongException(SYNTAX_ERROR);
+        }
+
+        throw WukongException(SYNTAX_ERROR);
+    }
+    
+    /// HyperParser::ElementList to HyperQuery::Param list
+    std::vector<HyperQuery::Param> transfer_param_list(const HyperParser::ElementList &el) {
+        std::vector<HyperQuery::Param> params;
+        for (auto &&e : el) params.insert(params.begin(), transfer_param(e));
+        return params;        
     }
 
     /// HyperParser::Element to ssid
@@ -133,34 +167,51 @@ private:
         throw WukongException(SYNTAX_ERROR);
     }
 
-    std::vector<ssid_t> transfer_element_list(const HyperParser::ElementList &el) {
-        std::vector<ssid_t> inputs;
-        for (auto &&e : el) inputs.insert(inputs.begin(), transfer_element(e));
-        return inputs;
+    /// HyperParser::ElementList to input lists in HyperQuery::Pattern
+    void transfer_input_list(const HyperParser::ElementList &el, HyperQuery::Pattern &pt) {
+        for (auto &&e : el) {
+            switch (e.type) {
+            case HyperParser::Element::Variable:
+                pt.input_vars.push_back(e.id);
+                break;
+            case HyperParser::Element::IRI:
+            {
+                std::string str = "<" + e.value + ">"; // IRI
+                if (!str_server->exist(str)) {
+                    if (!str_server->exist_he(str)) {
+                        logstream(LOG_ERROR) << "Unknown IRI: " + str << LOG_endl;
+                        throw WukongException(SYNTAX_ERROR);
+                    } else {
+                        pt.input_eids.push_back(str_server->str2id_he(str));
+                    }
+                } else {
+                    pt.input_vids.push_back(str_server->str2id(str));
+                }
+                break;
+            }
+            default:
+                e.print_element();
+                throw WukongException(SYNTAX_ERROR);
+            }
+        }
     }
 
-    /// HyperParser::PatternGroup to SPARQLQuery::PatternGroup
+    /// HyperParser::PatternGroup to HyperQuery::PatternGroup
     void transfer_pg(HyperParser::PatternGroup &src, HyperQuery::PatternGroup &dst) {
         // Patterns
         for (auto const &p : src.patterns) {
+            HyperQuery::Pattern pattern;
             // parse all the elements
-            HyperQuery::PatternType type = transfer_type(p.type);
-            std::vector<ssid_t> input_vars = transfer_element_list(p.input_vars);
-            // TODO:
-            sid_t he_type;
-            std::vector<heid_t> input_eids;
-            ssid_t output_var = transfer_element(p.output_var);
-            sid_t bind_node = transfer_element(p.bind_node);
-            uint32_t k = (uint32_t)p.k;
+            pattern.type = transfer_type(p.type);
+            transfer_input_list(p.input_vars, pattern);
+            pattern.output_var = transfer_element(p.output_var);
+            pattern.params = transfer_param_list(p.params);
             // check invalid elements
-            ASSERT_GT(input_vars.size(), 0);
-            ASSERT_LT(output_var, 0);
-            ASSERT_GE(p.k, 0);
-            // construct and add the new pattern
-            HyperQuery::Pattern pattern(type, he_type, input_vars, input_eids, output_var, bind_node, k);
+            ASSERT_GT(p.input_vars.size(), 0);
+            ASSERT_LT(pattern.output_var, 0);
+            // add the new pattern
             dst.patterns.push_back(pattern);
         }
-
     }
 
     void transfer(const HyperParser &sp, HyperQuery &sq) {
