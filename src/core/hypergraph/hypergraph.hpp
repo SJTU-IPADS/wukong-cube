@@ -67,6 +67,7 @@ using HEStore = KVStore<hekey_t, iptr_t, sid_t>;
 class HyperGraph : public DGraph {
 protected:
     using tbb_hedge_hash_map = tbb::concurrent_hash_map<sid_t, std::vector<heid_t>>;
+    using tbb_hv_hash_map = tbb::concurrent_hash_map<sid_t, std::set<sid_t>>;
 
     const int HE_RATIO = 50;
     const int V2E_RATIO = 50;
@@ -86,6 +87,8 @@ protected:
 
     // hyperedge-index
     tbb_hedge_hash_map he_map;
+    // hyperege-vertex-index
+    tbb_hv_hash_map hv_map;
 
     void collect_idx_info(RDFStore::slot_t& slot) {
         sid_t vid = slot.key.vid;
@@ -307,24 +310,48 @@ protected:
             tbb_hedge_hash_map::accessor a;
             he_map.insert(a, edge.edge_type);
             a->second.push_back(edge.id);
+
+            // hyperege-vertex-index
+            tbb_hv_hash_map::accessor ahv;
+            hv_map.insert(ahv, edge.edge_type);
+            for (auto const& vid : edge.vertices)
+                ahv->second.insert(vid);
         }
     }
 
     void insert_he_index() {
+        // insert hypertype index(htid -> heids)
         for (auto const& e : he_map) {
             // alloc entries
             sid_t edge_type = e.first;
             uint64_t sz = e.second.size();
             uint64_t off = this->v2estore->alloc_entries(sz, 0);
 
-            // insert index key
+            // insert hyper type as index key
             uint64_t slot_id = this->v2estore->insert_key(
                 hvkey_t(0, edge_type),
                 iptr_t(sz, off));
 
-            // insert subjects/objects
+            // insert heids as value
             for (auto const& heid : e.second)
                 this->v2estore->values[off++] = heid;
+        }
+
+        // insert hypertype-vertex index(htid -> vids)
+        for (auto const& hv : hv_map) {
+            // alloc entries
+            sid_t edge_type = hv.first;
+            uint64_t sz = hv.second.size();
+            uint64_t off = this->hestore->alloc_entries(sz, 0);
+
+            // insert hyper type as index key
+            uint64_t slot_id = this->hestore->insert_key(
+                hekey_t(edge_type),
+                iptr_t(sz, off));
+
+            // insert vids as value
+            for (auto const& vid : hv.second)
+                this->hestore->values[off++] = vid;
         }
     }
 
@@ -568,6 +595,11 @@ public:
     // get hyper edge content by heid
     sid_t* get_edge_by_heid(int tid, heid_t eid, uint64_t& sz) {
         return hestore->get_values(tid, PARTITION(eid), hekey_t(eid), sz);
+    }
+
+    // get vids by hyper type
+    sid_t* get_vids_by_htype(int tid, sid_t edge_type, uint64_t& sz) {
+        return hestore->get_values(tid, this->sid, hekey_t(edge_type), sz);
     }
 
     // get heid list by vid and hyper type

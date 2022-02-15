@@ -270,6 +270,8 @@ public:
     virtual heid_t* get_heids_by_type(int tid, sid_t edge_type, uint64_t& sz) {}
     // get hyper edge content by heid
     virtual sid_t* get_edge_by_heid(int tid, heid_t eid, uint64_t& sz) {}
+    // get vids by hyper type
+    virtual sid_t* get_vids_by_htype(int tid, sid_t edge_type, uint64_t& sz) {}
     // get heid list by vid and hyper type
     virtual std::vector<std::pair<sid_t*, uint64_t>> get_edges_by_type(int tid, sid_t edge_type) {}
 

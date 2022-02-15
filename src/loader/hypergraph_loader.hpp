@@ -79,8 +79,10 @@ protected:
     }
 
     heid_t generate_heid(int sid, int tid, int index) {
+        // need refine
+        static heid_t heid_base = (1 << NBITS_ETYPE);
         heid_t id = Global::num_servers * Global::num_engines * index
-                    + tid * Global::num_servers + sid;
+                    + tid * Global::num_servers + sid + heid_base;
         return id;
     }
 

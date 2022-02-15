@@ -45,6 +45,8 @@ static inline bool is_htid(ssid_t id) { return (id > 1) && (id < (1 << NBITS_ETY
 
 static inline bool is_hvid(ssid_t id) { return id >= (1 << NBITS_ETYPE); }
 
+static inline bool is_heid(heid_t id) { return id >= (1 << NBITS_ETYPE); }
+
 /**
  * hypergraph-friendly key/value store
  * key: id | type | index
