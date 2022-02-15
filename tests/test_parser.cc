@@ -1,14 +1,14 @@
 #include <gtest/gtest.h>
 #include "core/hyperquery/parser.hpp"
 
-#define HYPER_QUERY_SINGLE_V2E "hyper_query/basic/v2e/singleV_hq"
-#define HYPER_QUERY_MUL_V2E "hyper_query/basic/v2e/multiV_hq"
-#define HYPER_QUERY_SINGLE_E2V "hyper_query/basic/e2v/singleE_hq"
-#define HYPER_QUERY_MUL_E2V "hyper_query/basic/e2v/multiE_hq"
-#define HYPER_QUERY_CT_E2E "hyper_query/basic/e2e/contain_hq"
-#define HYPER_QUERY_IN_E2E "hyper_query/basic/e2e/in_hq"
-#define HYPER_QUERY_ITSCT_E2E "hyper_query/basic/e2e/intersect_hq"
-#define HYPER_QUERY_ITSCT_V2V "hyper_query/basic/v2v/intersect_hq"
+#define HYPER_QUERY_SINGLE_V2E "hyper_query/test/basic/v2e/singleV_hq"
+#define HYPER_QUERY_MUL_V2E "hyper_query/test/basic/v2e/multiV_hq"
+#define HYPER_QUERY_SINGLE_E2V "hyper_query/test/basic/e2v/singleE_hq"
+#define HYPER_QUERY_MUL_E2V "hyper_query/test/basic/e2v/multiE_hq"
+#define HYPER_QUERY_CT_E2E "hyper_query/test/basic/e2e/contain_hq"
+#define HYPER_QUERY_IN_E2E "hyper_query/test/basic/e2e/in_hq"
+#define HYPER_QUERY_ITSCT_E2E "hyper_query/test/basic/e2e/intersect_hq"
+#define HYPER_QUERY_ITSCT_V2V "hyper_query/test/basic/v2v/intersect_hq"
 
 #define HTYPE 5
 #define HID1 10
@@ -28,10 +28,10 @@ class ParserTest : public ::testing::Test {
     ParserTest() : parser(&str_server) {
         // initialize string server
         str_server.add("<http://www.w3.org/1999/02/22-rdf-syntax-ns#CoAuthor>", HTYPE);
-        str_server.add("<http://www.edu/CoAuthor0>", HID1);
-        str_server.add("<http://www.edu/CoAuthor1>", HID2);
         str_server.add("<http://www.edu/Professor0>", VID1);
         str_server.add("<http://www.edu/Professor1>", VID2);
+        str_server.add_he("<http://www.edu/CoAuthor0>", HID1);
+        str_server.add_he("<http://www.edu/CoAuthor1>", HID2);
     }
 
     ~ParserTest() {}
@@ -61,10 +61,14 @@ TEST_F(ParserTest, V2E) {
     request1.pattern_group.print_group();
     ASSERT_EQ(request1.pattern_group.patterns.size(), 1);
     ASSERT_EQ(request1.pattern_group.patterns[0].type, HyperQuery::V2E);
-    ASSERT_EQ(request1.pattern_group.patterns[0].bind_node, HTYPE);
-    ASSERT_EQ(request1.pattern_group.patterns[0].input_vars.size(), 1);
-    ASSERT_EQ(request1.pattern_group.patterns[0].input_vars[0], VID1);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_vars.size(), 0);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_eids.size(), 0);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_vids.size(), 1);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_vids[0], VID1);
     ASSERT_EQ(request1.pattern_group.patterns[0].output_var, -1);
+    ASSERT_EQ(request1.pattern_group.patterns[0].params.size(), 1);
+    ASSERT_EQ(request1.pattern_group.patterns[0].params[0].type, SID_t);
+    ASSERT_EQ(request1.pattern_group.patterns[0].params[0].sid, HTYPE);
     ASSERT_EQ(request1.result.required_vars.size(), 1);
 
     // Parse the SPARQL query multi v2e
@@ -79,11 +83,16 @@ TEST_F(ParserTest, V2E) {
     request2.pattern_group.print_group();
     ASSERT_EQ(request2.pattern_group.patterns.size(), 1);
     ASSERT_EQ(request2.pattern_group.patterns[0].type, HyperQuery::V2E);
-    ASSERT_EQ(request2.pattern_group.patterns[0].bind_node, HTYPE);
-    ASSERT_EQ(request2.pattern_group.patterns[0].input_vars.size(), 2);
-    ASSERT_EQ(request2.pattern_group.patterns[0].input_vars[0], VID1);
-    ASSERT_EQ(request2.pattern_group.patterns[0].input_vars[1], VID2);
+    ASSERT_EQ(request2.pattern_group.patterns[0].input_vars.size(), 0);
+    ASSERT_EQ(request2.pattern_group.patterns[0].input_eids.size(), 0);
+    ASSERT_EQ(request2.pattern_group.patterns[0].input_vids.size(), 2);
+    ASSERT_EQ(request2.pattern_group.patterns[0].input_vids[0], VID2);
+    ASSERT_EQ(request2.pattern_group.patterns[0].input_vids[1], VID1);
     ASSERT_EQ(request2.pattern_group.patterns[0].output_var, -1);
+    ASSERT_EQ(request2.pattern_group.patterns[0].params.size(), 1);
+    ASSERT_EQ(request2.pattern_group.patterns[0].params[0].type, SID_t);
+    ASSERT_EQ(request2.pattern_group.patterns[0].params[0].sid, HTYPE);
+    ASSERT_EQ(request2.result.required_vars.size(), 1);
 }
 
 TEST_F(ParserTest, E2V) {
@@ -102,10 +111,12 @@ TEST_F(ParserTest, E2V) {
     request1.pattern_group.print_group();
     ASSERT_EQ(request1.pattern_group.patterns.size(), 1);
     ASSERT_EQ(request1.pattern_group.patterns[0].type, HyperQuery::E2V);
-    ASSERT_EQ(request1.pattern_group.patterns[0].bind_node, 0);
-    ASSERT_EQ(request1.pattern_group.patterns[0].input_vars.size(), 1);
-    ASSERT_EQ(request1.pattern_group.patterns[0].input_vars[0], HID1);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_vars.size(), 0);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_eids.size(), 1);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_vids.size(), 0);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_eids[0], HID1);
     ASSERT_EQ(request1.pattern_group.patterns[0].output_var, -1);
+    ASSERT_EQ(request1.pattern_group.patterns[0].params.size(), 0);
     ASSERT_EQ(request1.result.required_vars.size(), 1);
 
     // Parse the SPARQL query multi e2v
@@ -120,11 +131,14 @@ TEST_F(ParserTest, E2V) {
     request2.pattern_group.print_group();
     ASSERT_EQ(request2.pattern_group.patterns.size(), 1);
     ASSERT_EQ(request2.pattern_group.patterns[0].type, HyperQuery::E2V);
-    ASSERT_EQ(request2.pattern_group.patterns[0].bind_node, 0);
-    ASSERT_EQ(request2.pattern_group.patterns[0].input_vars.size(), 2);
-    ASSERT_EQ(request2.pattern_group.patterns[0].input_vars[0], HID1);
-    ASSERT_EQ(request2.pattern_group.patterns[0].input_vars[1], HID2);
+    ASSERT_EQ(request2.pattern_group.patterns[0].input_vars.size(), 0);
+    ASSERT_EQ(request2.pattern_group.patterns[0].input_eids.size(), 2);
+    ASSERT_EQ(request2.pattern_group.patterns[0].input_vids.size(), 0);
+    ASSERT_EQ(request2.pattern_group.patterns[0].input_eids[0], HID2);
+    ASSERT_EQ(request2.pattern_group.patterns[0].input_eids[1], HID1);
     ASSERT_EQ(request2.pattern_group.patterns[0].output_var, -1);
+    ASSERT_EQ(request2.pattern_group.patterns[0].params.size(), 0);
+    ASSERT_EQ(request2.result.required_vars.size(), 1);
 }
 
 TEST_F(ParserTest, E2E) {
@@ -143,10 +157,14 @@ TEST_F(ParserTest, E2E) {
     request1.pattern_group.print_group();
     ASSERT_EQ(request1.pattern_group.patterns.size(), 1);
     ASSERT_EQ(request1.pattern_group.patterns[0].type, HyperQuery::E2E_CT);
-    ASSERT_EQ(request1.pattern_group.patterns[0].bind_node, HTYPE);
-    ASSERT_EQ(request1.pattern_group.patterns[0].input_vars.size(), 1);
-    ASSERT_EQ(request1.pattern_group.patterns[0].input_vars[0], HID1);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_vars.size(), 0);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_eids.size(), 1);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_vids.size(), 0);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_eids[0], HID1);
     ASSERT_EQ(request1.pattern_group.patterns[0].output_var, -1);
+    ASSERT_EQ(request1.pattern_group.patterns[0].params.size(), 1);
+    ASSERT_EQ(request1.pattern_group.patterns[0].params[0].type, SID_t);
+    ASSERT_EQ(request1.pattern_group.patterns[0].params[0].sid, HTYPE);
     ASSERT_EQ(request1.result.required_vars.size(), 1);
 
     // Parse the SPARQL query in e2e
@@ -161,10 +179,14 @@ TEST_F(ParserTest, E2E) {
     request2.pattern_group.print_group();
     ASSERT_EQ(request2.pattern_group.patterns.size(), 1);
     ASSERT_EQ(request2.pattern_group.patterns[0].type, HyperQuery::E2E_IN);
-    ASSERT_EQ(request2.pattern_group.patterns[0].bind_node, HTYPE);
-    ASSERT_EQ(request2.pattern_group.patterns[0].input_vars.size(), 1);
-    ASSERT_EQ(request2.pattern_group.patterns[0].input_vars[0], HID1);
+    ASSERT_EQ(request2.pattern_group.patterns[0].input_vars.size(), 0);
+    ASSERT_EQ(request2.pattern_group.patterns[0].input_eids.size(), 1);
+    ASSERT_EQ(request2.pattern_group.patterns[0].input_vids.size(), 0);
+    ASSERT_EQ(request2.pattern_group.patterns[0].input_eids[0], HID1);
     ASSERT_EQ(request2.pattern_group.patterns[0].output_var, -1);
+    ASSERT_EQ(request2.pattern_group.patterns[0].params.size(), 1);
+    ASSERT_EQ(request2.pattern_group.patterns[0].params[0].type, SID_t);
+    ASSERT_EQ(request2.pattern_group.patterns[0].params[0].sid, HTYPE);
     ASSERT_EQ(request2.result.required_vars.size(), 1);
 
     // Parse the SPARQL query intersect e2e
@@ -179,10 +201,16 @@ TEST_F(ParserTest, E2E) {
     request3.pattern_group.print_group();
     ASSERT_EQ(request3.pattern_group.patterns.size(), 1);
     ASSERT_EQ(request3.pattern_group.patterns[0].type, HyperQuery::E2E_ITSCT);
-    ASSERT_EQ(request3.pattern_group.patterns[0].bind_node, HTYPE);
-    ASSERT_EQ(request3.pattern_group.patterns[0].input_vars.size(), 1);
-    ASSERT_EQ(request3.pattern_group.patterns[0].input_vars[0], HID1);
+    ASSERT_EQ(request3.pattern_group.patterns[0].input_vars.size(), 0);
+    ASSERT_EQ(request3.pattern_group.patterns[0].input_eids.size(), 1);
+    ASSERT_EQ(request3.pattern_group.patterns[0].input_vids.size(), 0);
+    ASSERT_EQ(request3.pattern_group.patterns[0].input_eids[0], HID1);
     ASSERT_EQ(request3.pattern_group.patterns[0].output_var, -1);
+    ASSERT_EQ(request3.pattern_group.patterns[0].params.size(), 2);
+    ASSERT_EQ(request3.pattern_group.patterns[0].params[0].type, SID_t);
+    ASSERT_EQ(request3.pattern_group.patterns[0].params[0].sid, HTYPE);
+    ASSERT_EQ(request3.pattern_group.patterns[0].params[1].type, INT_t);
+    ASSERT_EQ(request3.pattern_group.patterns[0].params[1].num, 2);
     ASSERT_EQ(request3.result.required_vars.size(), 1);
 }
 
@@ -202,11 +230,16 @@ TEST_F(ParserTest, V2V) {
     request1.pattern_group.print_group();
     ASSERT_EQ(request1.pattern_group.patterns.size(), 1);
     ASSERT_EQ(request1.pattern_group.patterns[0].type, HyperQuery::V2V);
-    ASSERT_EQ(request1.pattern_group.patterns[0].bind_node, HTYPE);
-    ASSERT_EQ(request1.pattern_group.patterns[0].k, 2);
-    ASSERT_EQ(request1.pattern_group.patterns[0].input_vars.size(), 1);
-    ASSERT_EQ(request1.pattern_group.patterns[0].input_vars[0], VID1);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_vars.size(), 0);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_eids.size(), 0);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_vids.size(), 1);
+    ASSERT_EQ(request1.pattern_group.patterns[0].input_vids[0], VID1);
     ASSERT_EQ(request1.pattern_group.patterns[0].output_var, -1);
+    ASSERT_EQ(request1.pattern_group.patterns[0].params.size(), 2);
+    ASSERT_EQ(request1.pattern_group.patterns[0].params[0].type, SID_t);
+    ASSERT_EQ(request1.pattern_group.patterns[0].params[0].sid, HTYPE);
+    ASSERT_EQ(request1.pattern_group.patterns[0].params[1].type, INT_t);
+    ASSERT_EQ(request1.pattern_group.patterns[0].params[1].num, 2);
     ASSERT_EQ(request1.result.required_vars.size(), 1);
 }
 
