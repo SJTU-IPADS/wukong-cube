@@ -282,7 +282,7 @@ protected:
 
             // insert eids
             for (uint64_t i = s; i < e; i++) {
-                this->v2estore->values[off++] = v2etriples[s].eid;
+                this->v2estore->values[off++] = v2etriples[i].eid;
             }
 
             // TODO: build index
@@ -545,6 +545,15 @@ public:
         //                     << "for initializing gstore." << LOG_endl;
 
         // ========== init V2E KV ==========
+        int count = 0;
+        for (auto const& v2eVec : v2etriples) {
+            for (auto const& v2e : v2eVec) {
+                logstream(LOG_INFO) << "vid = " << v2e.vid << ", htid = " << v2e.edge_type << ", eid = " << v2e.eid << LOG_endl;
+                count++;
+            }
+            logstream(LOG_INFO) << "-------------" << LOG_endl;
+        }
+
         start = timer::get_usec();
         init_v2estore(v2etriples);
         end = timer::get_usec();
