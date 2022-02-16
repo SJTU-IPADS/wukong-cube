@@ -271,6 +271,10 @@ public:
                                result.result_data.end());
         }
 
+        bool empty() {
+            return (col_num == 0 && result_data.empty());
+        }
+
         void clear() {
             col_num = 0;
             result_data.clear();
@@ -317,13 +321,6 @@ public:
     public:
         Result() { }
 
-        static const int TYPE_NUM = 5;
-        static const int TYPE_VERTEX = 0;
-        static const int TYPE_EDGE = 1;
-        static const int TYPE_INT = 2;
-        static const int TYPE_FLOAT = 3;
-        static const int TYPE_DOUBLE = 4;
-
         // defined as constexpr due to switch-case
         constexpr int const_pair(int t1, int t2) { return ((t1 << 4) | t2); }
 
@@ -335,7 +332,6 @@ public:
         int ext2type(int ext) { return ((ext >> COL_BITS) & ((1 << COL_BITS) - 1)); }
 
         // metadata
-        std::vector<int> col_nums;
         int row_num = 0;  // FIXME: vs. get_row_num()
         int attr_col_num = 0; // FIXME: why not no attr_row_num
         int status_code = SUCCESS;
@@ -350,10 +346,6 @@ public:
         std::vector<ssid_t> required_vars; // variables selected to return
         std::vector<int> v2c_map; // from variable ID (vid) to column ID, index: vid, value: col
 
-        int get_col_num(int type) { 
-            return this->col_nums[type];
-        }
-
         void clear() {
             vid_res_table.clear();
             heid_res_table.clear();
@@ -363,10 +355,8 @@ public:
         }
 
         bool empty() {
-            for(auto col_num : col_nums) {
-                if(col_num > 0) return false;
-            }
-            return true;
+            return vid_res_table.empty() && heid_res_table.empty() &&
+                    float_res_table.empty() && double_res_table.empty();
         }
 
         vstat var_stat(ssid_t var) {
@@ -379,7 +369,7 @@ public:
         }
 
         // add column id to var (pattern variable)
-        void add_var2col(ssid_t var, int col, int type = SID_t) {
+        void add_var2col(ssid_t var, int col, data_type type = SID_t) {
             // number variables from -1 and decrease by 1 for each of rest. (i.e., -1, -2, ...)
             ASSERT(var < 0 && col >= 0);
 
@@ -494,6 +484,27 @@ public:
             } else { return 0; }
         }
 
+        sid_t get_row_col(int r, int c, data_type type = SID_t) {
+            ASSERT(r >= 0 && c >= 0);
+            switch (type) {
+            case SID_t:
+                return vid_res_table.get_row_col(r, c);
+            case HEID_t:
+                return heid_res_table.get_row_col(r, c);
+            case FLOAT_t:
+                return float_res_table.get_row_col(r, c);
+            case DOUBLE_t:
+                return double_res_table.get_row_col(r, c);
+            }
+        }
+
+        void load_data(Result& result) {
+            vid_res_table.swap(result.vid_res_table);
+            heid_res_table.swap(result.heid_res_table);
+            float_res_table.swap(result.float_res_table);
+            double_res_table.swap(result.double_res_table);
+        }
+
         void update_nrows() {
             if(vid_res_table.get_col_num() == 0 && 
                heid_res_table.get_col_num() == 0 &&
@@ -508,20 +519,6 @@ public:
                 row_num = float_res_table.get_data_size() / float_res_table.get_col_num();
             } else if(double_res_table.get_col_num() != 0) {
                 row_num = double_res_table.get_data_size() / double_res_table.get_col_num();
-            }
-        }
-
-        sid_t get_row_col(int r, int c, data_type type = SID_t) {
-            ASSERT(r >= 0 && c >= 0);
-            switch (type) {
-            case SID_t:
-                return vid_res_table.get_row_col(r, c);
-            case HEID_t:
-                return heid_res_table.get_row_col(r, c);
-            case FLOAT_t:
-                return float_res_table.get_row_col(r, c);
-            case DOUBLE_t:
-                return double_res_table.get_row_col(r, c);
             }
         }
 
@@ -738,7 +735,6 @@ void load(Archive &ar, wukong::HyperQuery::PatternGroup &t, unsigned int version
 
 template<class Archive>
 void save(Archive &ar, const wukong::HyperQuery::Result &t, unsigned int version) {
-    ar << t.col_nums;
     ar << t.row_num;
     ar << t.blind;
     ar << t.status_code;
@@ -767,7 +763,6 @@ void save(Archive &ar, const wukong::HyperQuery::Result &t, unsigned int version
 template<class Archive>
 void load(Archive & ar, wukong::HyperQuery::Result &t, unsigned int version) {
     // printf("loading HyperQuery::Result\n");
-    ar >> t.col_nums;
     ar >> t.row_num;
     ar >> t.blind;
     ar >> t.status_code;
