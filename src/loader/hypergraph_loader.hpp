@@ -331,15 +331,11 @@ protected:
         }
 
         // start from 1: avoid assign edge id to 0
-        std::vector<uint64_t> edge_index(Global::num_engines, 1);
         #pragma omp parallel for num_threads(Global::num_engines)
         for(int i = 0; i < edges.size(); i++) {
             int localtid = omp_get_thread_num();
-            int index_start = edge_index[localtid];
             // TODO: send v2e triples
-            // generate id for each hyperedge
             for(int j = 0; j < edges[i].size(); j++){
-                // edges[i][j].id = generate_heid(sid, localtid, index_start+j);
                 for(int k = 0; k < edges[i][j].vertices.size(); k++){
                     int dst_sid = PARTITION(edges[i][j].vertices[k]);
                     V2ETriple triple;
@@ -349,7 +345,6 @@ protected:
                     send_v2e(localtid, dst_sid, triple);
                 }
             }
-            edge_index[localtid] += edges[i].size();
         }
 
         // flush the rest hyperedges within each RDMA buffer
