@@ -148,8 +148,8 @@ private:
 
         // update result and metadata
         res.vid_res_table.load_data(updated_result_table);
-        res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_VERTEX));
-        res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_VERTEX) + 1, SID_t);
+        res.add_var2col(end, res.get_col_num(SID_t));
+        res.set_col_num(res.get_col_num(SID_t) + 1, SID_t);
         res.update_nrows();
     }
 
@@ -175,163 +175,113 @@ private:
 
         // update result and metadata
         res.heid_res_table.load_data(updated_result_table);
-        res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_EDGE));
-        res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_EDGE) + 1, HEID_t);
+        res.add_var2col(end, res.get_col_num(HEID_t));
+        res.set_col_num(res.get_col_num(HEID_t) + 1, HEID_t);
         res.update_nrows();
     }
 
     void op_get_e2v(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_INFO) << "Execute containV() op:" << LOG_endl;
-        // multi-edges e2v
-        if(op.input_eids.size() > 1) {
-            heid_t first_e = op.input_eids[0];
-            ssid_t end = op.output_var;
-            HyperQuery::Result& res = query.result;
+        logstream(LOG_INFO) << "Execute E2V op:" << LOG_endl;
 
-            // MUST be the first triple pattern
-            ASSERT_ERROR_CODE(res.empty(), FIRST_PATTERN_ERROR);
-
-            uint64_t sz = 0;
-            sid_t* vids = graph->get_edge_by_heid(tid, first_e, sz);
-            std::set<sid_t> result_vids(vids, vids + sz);
-            for(int i = 1; i < op.input_eids.size(); i++) {
-                sid_t* other_vids = graph->get_edge_by_heid(tid, op.input_eids[i], sz);
-                intersect_set_v2(result_vids, other_vids, sz);
-            }
-
-            std::vector<sid_t> updated_result_table(std::begin(result_vids), std::end(result_vids));
-
-            // update result and metadata
-            res.vid_res_table.load_data(updated_result_table);
-            res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_VERTEX));
-            res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_VERTEX) + 1, SID_t);
-            res.update_nrows();
+        // TODO: deal with var+const-edge case
+        ASSERT_ERROR_CODE(op.input_vars.size() + op.input_eids.size(), UNKNOWN_PATTERN);
+        sid_t type_id = 0;
+        if (!op.params.empty()) {
+            ASSERT_ERROR_CODE(op.params.size() == 1 && op.params[0].type == SID_t, PARAMETER_INVALID);
+            type_id = op.params[0].sid;
         }
-        // single-const-edge e2v
-        else if (op.input_eids.size() == 1) {
-            heid_t start = op.input_eids[0];
-            ssid_t end = op.output_var;
+        ssid_t end = op.output_var;
+        HyperQuery::Result& res = query.result;
+        HyperQuery::Result updated_result;
 
-            HyperQuery::Result& res = query.result;
-
+        // const-vertices v2e
+        if(op.input_vars.empty()) {
             // MUST be the first triple pattern
             ASSERT_ERROR_CODE(res.empty(), FIRST_PATTERN_ERROR);
+            ASSERT_ERROR_CODE(!op.input_eids.empty(), UNKNOWN_PATTERN);
+            
+            sid_t start = op.input_eids[0];
 
-            uint64_t sz = 0;
-            sid_t* vids = graph->get_edge_by_heid(tid, start, sz);
-            std::vector<sid_t> updated_result_table;
-            for(uint64_t k = 0; k < sz; k++)
-                updated_result_table.push_back(vids[k]);
-
-            // update result and metadata
-            res.vid_res_table.load_data(updated_result_table);
-            res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_VERTEX));
-            res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_VERTEX) + 1, SID_t);
-            res.update_nrows();
-        } 
+            // match const vids
+            uint64_t vid_sz = 0;
+            sid_t* vids = graph->get_edge_by_heid(tid, start, vid_sz);
+            std::set<sid_t> start_vids(vids, vids + vid_sz);
+            for(int i = 1; i < op.input_eids.size(); i++) {
+                vids = graph->get_edge_by_heid(tid, op.input_eids[i], vid_sz);
+                intersect_set_v2(start_vids, vids, vid_sz);
+            }
+            updated_result.vid_res_table.result_data.assign(start_vids.begin(), start_vids.end());
+        }
         // single-var-vertex e2v
-        else {
-            ssid_t start = op.input_vids[0];
-            ssid_t end = op.output_var;
-
-            HyperQuery::Result& res = query.result;
-
-            std::vector<sid_t> updated_result_table;
-
+        else if (op.input_eids.size() == 1) {
+            ASSERT(op.input_eids.empty() && op.input_vars.size() == 1);
+            ASSERT(query.pattern_step != 0);
+            sid_t start = op.input_vars[0];
             sid_t cached = BLANK_ID; // simple dedup for consecutive same vertices
             sid_t* vids = NULL;
-            uint64_t sz = 0;
+            uint64_t vid_sz = 0;
             int nrows = res.get_row_num();
 
             for(int i = 0; i < nrows; i++) {
-                heid_t cur = res.get_row_col(i, res.var2col(start), HEID_t);
+                sid_t cur = res.get_row_col(i, res.var2col(start), HEID_t);
 
                 if (cur != cached) { // new KNOWN
                     cached = cur;
-                    vids = graph->get_edge_by_heid(tid, cur, sz);
+                    vids = graph->get_edge_by_heid(tid, cur, vid_sz);
                 }
 
-                for (uint64_t k = 0; k < sz; k++) {
-                    res.vid_res_table.append_row_to(i, updated_result_table);
-                    updated_result_table.push_back(vids[k]);
+                for (uint64_t k = 0; k < vid_sz; k++) {
+                    res.append_res_table_row_to(i, updated_result);
+                    updated_result.heid_res_table.result_data.push_back(vids[k]);
                 }
             }
-
-            res.vid_res_table.load_data(updated_result_table);
-            res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_VERTEX));
-            res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_VERTEX) + 1, SID_t);
-            res.update_nrows();
         }
 
+        // update result and metadata
+        res.load_data(updated_result);
+        res.add_var2col(end, res.get_col_num(SID_t));
+        res.set_col_num(res.get_col_num(SID_t) + 1, SID_t);
+        res.update_nrows();
         query.advance_step();
     }
 
     void op_get_v2e(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_INFO) << "Execute inE() op:" << LOG_endl;
-        ASSERT_GT(op.input_vids.size(), 0);
-        ASSERT_EQ(op.params.size(), 1);
-        ASSERT_EQ(op.params[0].type, SID_t);
+        logstream(LOG_INFO) << "Execute V2E op:" << LOG_endl;
+
+        // TODO: deal with var+const-vertex case
+        ASSERT_ERROR_CODE(op.input_vars.size() + op.input_vids.size(), UNKNOWN_PATTERN);
+        ASSERT_ERROR_CODE(op.params.size() == 1 && op.params[0].type == SID_t, PARAMETER_INVALID);
         sid_t htid = op.params[0].sid;
-        // multi-vertices v2e
-        if(op.input_vids.size() > 1) {
-            sid_t first_v = op.input_vids[0];
-            ssid_t end = op.output_var;
+        ssid_t end = op.output_var;
+        HyperQuery::Result& res = query.result;
+        HyperQuery::Result updated_result;
 
-            HyperQuery::Result& res = query.result;
-
+        // const-vertices v2e
+        if(op.input_vars.empty()) {
             // MUST be the first triple pattern
             ASSERT_ERROR_CODE(res.empty(), FIRST_PATTERN_ERROR);
-
-            uint64_t sz = 0;
-            heid_t* eids = graph->get_heids_by_vertex_and_type(tid, first_v, htid, sz);
-            std::set<heid_t> result_eids(eids, eids + sz);
-            for(int i = 1; i < op.input_vids.size(); i++) {
-                heid_t* other_eids = graph->get_heids_by_vertex_and_type(tid, op.input_vids[i], htid, sz);
-                intersect_set_v2(result_eids, other_eids, sz);
-            }
-
-            std::vector<heid_t> updated_result_table(std::begin(result_eids), std::end(result_eids));
-
-            // update result and metadata
-            res.heid_res_table.load_data(updated_result_table);
-            res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_EDGE));
-            res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_EDGE) + 1, HEID_t);
-            res.update_nrows();
-        }
-        // single-const-vertex v2e
-        else if (op.input_vids[0] > 0) {
+            ASSERT_ERROR_CODE(!op.input_vids.empty(), UNKNOWN_PATTERN);
+            
             sid_t start = op.input_vids[0];
-            ssid_t end = op.output_var;
 
-            HyperQuery::Result& res = query.result;
-
-            // MUST be the first triple pattern
-            ASSERT_ERROR_CODE(res.empty(), FIRST_PATTERN_ERROR);
-
-            uint64_t sz = 0;
-            heid_t* eids = graph->get_heids_by_vertex_and_type(tid, start, htid, sz);
-            std::vector<heid_t> updated_result_table;
-            for(uint64_t k = 0; k < sz; k++)
-                updated_result_table.push_back(eids[k]);
-
-            // update result and metadata
-            res.heid_res_table.load_data(updated_result_table);
-            res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_EDGE));
-            res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_EDGE) + 1, HEID_t);
-            res.update_nrows();
-        } 
+            // match const vids
+            uint64_t eid_sz = 0;
+            heid_t* eids = graph->get_heids_by_vertex_and_type(tid, start, htid, eid_sz);
+            std::set<heid_t> start_eids(eids, eids + eid_sz);
+            for(int i = 1; i < op.input_vids.size(); i++) {
+                eids = graph->get_heids_by_vertex_and_type(tid, op.input_vids[i], htid, eid_sz);
+                intersect_set_v2(start_eids, eids, eid_sz);
+            }
+            updated_result.heid_res_table.result_data.assign(start_eids.begin(), start_eids.end());
+        }
         // single-var-vertex v2e
         else {
-            ssid_t start = op.input_vids[0];
-            ssid_t end = op.output_var;
-
-            HyperQuery::Result& res = query.result;
-
-            std::vector<heid_t> updated_result_table;
-
+            ASSERT(op.input_vids.empty() && op.input_vars.size() == 1);
+            ASSERT(query.pattern_step != 0);
+            sid_t start = op.input_vars[0];
             sid_t cached = BLANK_ID; // simple dedup for consecutive same vertices
             heid_t* eids = NULL;
-            uint64_t sz = 0;
+            uint64_t eid_sz = 0;
             int nrows = res.get_row_num();
 
             for(int i = 0; i < nrows; i++) {
@@ -339,21 +289,21 @@ private:
 
                 if (cur != cached) { // new KNOWN
                     cached = cur;
-                    eids = graph->get_heids_by_vertex_and_type(tid, cur, htid, sz);
+                    eids = graph->get_heids_by_vertex_and_type(tid, cur, htid, eid_sz);
                 }
 
-                for (uint64_t k = 0; k < sz; k++) {
-                    res.heid_res_table.append_row_to(i, updated_result_table);
-                    updated_result_table.push_back(eids[k]);
+                for (uint64_t k = 0; k < eid_sz; k++) {
+                    res.append_res_table_row_to(i, updated_result);
+                    updated_result.heid_res_table.result_data.push_back(eids[k]);
                 }
             }
-
-            res.heid_res_table.load_data(updated_result_table);
-            res.add_var2col(end, res.get_col_num(HyperQuery::Result::TYPE_EDGE));
-            res.set_col_num(res.get_col_num(HyperQuery::Result::TYPE_EDGE) + 1, HEID_t);
-            res.update_nrows();
         }
 
+        // update result and metadata
+        res.load_data(updated_result);
+        res.add_var2col(end, res.get_col_num(HEID_t));
+        res.set_col_num(res.get_col_num(HEID_t) + 1, HEID_t);
+        res.update_nrows();
         query.advance_step();
     }
 
