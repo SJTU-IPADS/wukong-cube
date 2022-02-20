@@ -22,7 +22,7 @@ void yyerror(std::string error)
 }
 
 %}
-
+%error-verbose
 
 /*Identifier is something like where or select*/
 
@@ -40,7 +40,7 @@ void yyerror(std::string error)
 
 %token none error eof 
   iri string_ variable identifier
-  select_ where prefix union_ count distinct duplicates reduced /*predefined identifier*/
+  select_ ask_ where prefix union_ count distinct duplicates reduced /*predefined identifier*/
   colon semicolon comma dot underscore lcurly rcurly
   lparen rparen lbracket rbracket larrow rarrow
   anon equal not_equal less less_or_equal greater greater_or_equal
@@ -68,8 +68,8 @@ void yyerror(std::string error)
 SPARQLROOT: TRAV {parser->postParsing();return 0;} 
 ;
 
-TRAV: PREFIX_GROUP SELECT_WHERE
-    | SELECT_WHERE
+TRAV: PREFIX_GROUP MAIN_CLAUSE
+    | MAIN_CLAUSE
 ;
 
 PREFIX_GROUP: PREFIX_NODE
@@ -81,7 +81,17 @@ PREFIX_NODE: prefix identifier colon iri {
 }  
 ;
 
-SELECT_WHERE: select_ PROJECTION_MODIFIER PROJECTION_GROUP FROM_CLAUSE WHERE_CLAUSE ORDER_CLAUSE LIMIT_NODE OFFSET_NODE
+MAIN_CLAUSE: SELECT_WHERE
+           | ASK_WHERE
+
+SELECT_WHERE: select_ PROJECTION_MODIFIER PROJECTION_GROUP FROM_CLAUSE WHERE_CLAUSE ORDER_CLAUSE LIMIT_NODE OFFSET_NODE {
+    parser->registerQueryType(SPARQLParser::Type_Select);
+}
+;
+
+ASK_WHERE: ask_ FROM_CLAUSE WHERE_CLAUSE LIMIT_NODE OFFSET_NODE {
+    parser->registerQueryType(SPARQLParser::Type_Ask);
+}
 ;
 
 PROJECTION_MODIFIER: identifier {parser->addProjectionModifier($1);}

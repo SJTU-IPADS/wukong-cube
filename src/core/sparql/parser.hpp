@@ -227,6 +227,10 @@ private:
         sq.ts = sp.ts;
         sq.te = sp.te;
     #endif
+
+        // query type
+        sq.q_type = static_cast<SPARQLQuery::QueryType>(sp.getQueryType());
+
         // required varaibles of SELECT clause
         for (SPARQLParser::projection_iterator iter = sp.projectionBegin();
                 iter != sp.projectionEnd();
@@ -240,19 +244,21 @@ private:
         sq.result.nvars = sp.getVariableCount();
 
         // orders
-        for (SPARQLParser::order_iterator iter = sp.orderBegin();
-                iter != sp.orderEnd();
-                iter ++)
-            sq.orders.push_back(SPARQLQuery::Order((*iter).id, (*iter).descending));
+        if (sq.q_type == SPARQLQuery::SELECT)
+            for (SPARQLParser::order_iterator iter = sp.orderBegin();
+                    iter != sp.orderEnd();
+                    iter ++)
+                sq.orders.push_back(SPARQLQuery::Order((*iter).id, (*iter).descending));
 
         // limit and offset
         sq.limit = sp.getLimit();
         sq.offset = sp.getOffset();
 
         // distinct
-        if ((sp.getProjectionModifier() == SPARQLParser::ProjectionModifier::Modifier_Distinct)
-                || (sp.getProjectionModifier() == SPARQLParser::ProjectionModifier::Modifier_Reduced))
-            sq.distinct = true;
+        if (sq.q_type == SPARQLQuery::SELECT)
+            if ((sp.getProjectionModifier() == SPARQLParser::ProjectionModifier::Modifier_Distinct)
+                    || (sp.getProjectionModifier() == SPARQLParser::ProjectionModifier::Modifier_Reduced))
+                sq.distinct = true;
 
         // corun optimization (disabled)
         if (sq.corun_enabled = sp.isCorunEnabled()) {

@@ -375,15 +375,20 @@ public:
 
         // Check result status
         if (reply.result.status_code == SUCCESS) {
-            logstream(LOG_INFO) << "(last) result row num: " << reply.result.row_num
-                                << " , col num:" << reply.result.get_col_num() << LOG_endl;
+            if (request.q_type == SPARQLQuery::ASK) {
+                std::string result = reply.result.row_num? "True": "False";
+                logstream(LOG_INFO) << "(last) result: " << result << LOG_endl;
+            } else {
+                logstream(LOG_INFO) << "(last) result row num: " << reply.result.row_num
+                                    << " , col num:" << reply.result.get_col_num() << LOG_endl;
 
-            // print or dump results
-            if (!Global::silent) {
-                if (nlines > 0)
-                    print_result(reply, std::min(nlines, reply.result.row_num));
-                if (ofname != "")
-                    dump_result(ofname, reply, reply.result.row_num);
+                // print or dump results
+                if (!Global::silent) {
+                    if (nlines > 0)
+                        print_result(reply, std::min(nlines, reply.result.row_num));
+                    if (ofname != "")
+                        dump_result(ofname, reply, reply.result.row_num);
+                }
             }
         } else {
             logstream(LOG_ERROR)

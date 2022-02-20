@@ -172,6 +172,8 @@ public:
     
     enum NumericType {Numeric_Integer, Numeric_Decimal, Numeric_Double};
 
+    enum QueryType {Type_Select, Type_Ask};
+
     enum PatternType { Type_Pattern,Type_Filter,
                        Type_Optional,Type_PatternGroup,Type_Union
                      };
@@ -230,6 +232,9 @@ private:
     int corun_step;
     int fetch_step;
 
+    // indicate query type(select or ask)
+    QueryType q_type;
+
     /// Lookup or create a named variable
     ssid_t nameVariable(const std::string &name) {
         if (namedVariables.count(name))
@@ -277,6 +282,8 @@ public:
         patterns.unions.clear();
         patterns.optional.clear();
     }
+    /// Get the query type
+    const QueryType getQueryType() const {return q_type;}
     /// Get the patterns
     const PatternGroup &getPatterns() const { return patterns; }
     /// Get the name of a variable
@@ -361,6 +368,11 @@ public:
         } else {
             throw ParserException("time interval format must be [yyyy-MM-ddTHH:mm:ss, yyyy-MM-ddTHH:mm:ss]");
         }
+    }
+
+    // Register the query type
+    void registerQueryType(int type) {
+        q_type = static_cast<SPARQLParser::QueryType>(type);
     }
 
 	// Register the new prefix

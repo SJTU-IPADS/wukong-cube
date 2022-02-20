@@ -20,6 +20,7 @@
 "OPTIONAL"|"optional" {return optional_;}
 "PREFIX"|"prefix" {return prefix;}
 "SELECT"|"select" {return select_;}
+"ASK"|"ask" {return ask_;}
 "WHERE"|"where" {return where;}
 "FROM"|"from" {return from;}
 "SNAPSHOT"|"snapshot" {return snapshot;}
