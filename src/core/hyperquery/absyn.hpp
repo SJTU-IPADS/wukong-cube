@@ -87,6 +87,9 @@ public:
             case Int:
                 logstream(LOG_INFO) << num;
                 break;
+            case Literal:
+                logstream(LOG_INFO) << value;
+                break;
             default:
                 ASSERT(false);
             }
@@ -292,6 +295,20 @@ public:
         result->id = nameVariable(tokenValue);
         return result;
     }
+
+    // Deal with string element
+	Element* makeLiteralElement(char* value){
+        logstream(LOG_DEBUG) << "[HyperParser] make literal element" << LOG_endl; 
+		Element* result = new Element();
+
+        //remove < >
+        value[strlen(value)-1]='\0';
+        value = value+1;
+        result->value = std::string(value);
+        result->type = Element::Literal;
+
+        return result;
+	}
 
 	// Deal with iri pattern element
 	Element* makeIriElement(char* iriValue, bool customGrammar){

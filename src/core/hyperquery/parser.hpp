@@ -124,6 +124,15 @@ private:
                 return HyperQuery::Param(SID_t, str_server->str2id(str));
             }
         }
+        case HyperParser::Element::Literal:
+            if (!str_server->exist(e.value))
+                if (!str_server->exist_he(e.value)) {
+                    logstream(LOG_ERROR) << "Unknown STRING: " + e.value << LOG_endl;
+                    throw WukongException(SYNTAX_ERROR);
+                } else 
+                    return HyperQuery::Param(HEID_t, str_server->str2id_he(e.value));
+            else 
+                return HyperQuery::Param(SID_t, str_server->str2id(e.value));
         case HyperParser::Element::Int:
             ASSERT_GE(e.num, 0);     // int param should be a positive number
             return HyperQuery::Param(INT_t, e.num);
@@ -160,6 +169,15 @@ private:
                 return str_server->str2id(str);
             }
         }
+        case HyperParser::Element::Literal:
+            if (!str_server->exist(e.value))
+                if (!str_server->exist_he(e.value)) {
+                    logstream(LOG_ERROR) << "Unknown STRING: " + e.value << LOG_endl;
+                    throw WukongException(SYNTAX_ERROR);
+                } else 
+                    return str_server->str2id_he(e.value);
+            else 
+                return str_server->str2id(e.value);
         default:
             throw WukongException(SYNTAX_ERROR);
         }
@@ -189,6 +207,16 @@ private:
                 }
                 break;
             }
+            case HyperParser::Element::Literal:
+                if (!str_server->exist(e.value))
+                    if (!str_server->exist_he(e.value)) {
+                        logstream(LOG_ERROR) << "Unknown STRING: " + e.value << LOG_endl;
+                        throw WukongException(SYNTAX_ERROR);
+                    } else 
+                        pt.input_eids.push_back(str_server->str2id_he(e.value));
+                else 
+                    pt.input_vids.push_back(str_server->str2id(e.value));
+                break;
             default:
                 e.print_element();
                 throw WukongException(SYNTAX_ERROR);

@@ -48,7 +48,7 @@ void yyerror(std::string error) {
 
 
 %type<number> PATTERN_TYPE
-%type<str> identifier iri variable integer
+%type<str> identifier iri variable integer string_
 %type<element> PATTERN_ELEMENT
 %type<element_list> PATTERN_ELEMENT_LIST PATTERN_ELEMENT_GROUP
 %type<pattern> PATTERN
@@ -110,6 +110,7 @@ PATTERN_ELEMENT: iri {$$=parser->makeIriElement($1, false);}
                 | identifier colon identifier {$$=parser->makePrefixIriElement($1,$3,false);}
                 | variable {$$=parser->makeVariableElement($1);}
                 | integer {$$=parser->makeIntElement(atoi($1));}
+                | string_ {$$=parser->makeLiteralElement($1);}
 
 PATTERN_TYPE: edges {$$=HyperParser::PatternType::V2E;}
             | vertices {$$=HyperParser::PatternType::E2V;}
