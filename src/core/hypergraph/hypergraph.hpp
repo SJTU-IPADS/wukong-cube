@@ -544,16 +544,13 @@ public:
         // logstream(LOG_INFO) << "[RDFGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
         //                     << "for initializing gstore." << LOG_endl;
 
-        // ========== init V2E KV ==========
-        int count = 0;
-        for (auto const& v2eVec : v2etriples) {
-            for (auto const& v2e : v2eVec) {
-                logstream(LOG_INFO) << "vid = " << v2e.vid << ", htid = " << v2e.edge_type << ", eid = " << v2e.eid << LOG_endl;
-                count++;
-            }
-            logstream(LOG_INFO) << "-------------" << LOG_endl;
-        }
+        // print data information
+        size_t v2e_count = 0, he_count = 0;
+        for (auto const& v2eVec : v2etriples) v2e_count += v2eVec.size();
+        for (auto const& heVec : hyperedges) he_count += heVec.size();
+        logstream(LOG_INFO) << "-------" << v2e_count << " v2etriples, " << he_count << " hyperedges-------" << LOG_endl;
 
+        // ========== init V2E KV ==========
         start = timer::get_usec();
         v2estore->refresh();
         init_v2estore(v2etriples);
