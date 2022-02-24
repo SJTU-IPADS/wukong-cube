@@ -678,11 +678,11 @@ public:
         id2str.clear();
 
         // log meta info
-        for(int i = 0; i < edges.size(); i++) {
-            std::cout << "#" << sid << " Engine [" << i << "]" << std::endl;
-            std::cout << "#" << sid << " edge size:" << edges[i].size() << std::endl;
-            std::cout << "#" << sid << " v2etriple size:" << v2etriples[i].size() << std::endl;
-        }
+        // for(int i = 0; i < edges.size(); i++) {
+        //     std::cout << "#" << sid << " Engine [" << i << "]" << std::endl;
+        //     std::cout << "#" << sid << " edge size:" << edges[i].size() << std::endl;
+        //     std::cout << "#" << sid << " v2etriple size:" << v2etriples[i].size() << std::endl;
+        // }
         // Wukong sorts and dedups all hyperedges before finally inserting them to gstore (kvstore)
         sort_data<HyperEdge, hyperedge_sort>(edges);
         sort_data<V2ETriple, v2etriple_sort>(v2etriples);
