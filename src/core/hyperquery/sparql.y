@@ -16,11 +16,7 @@ namespace wukong {
 }
 
 int yylex();
-
-void yyerror(std::string error) {
-    std::cout << error << std::endl;
-    exit(1);
-}
+void yyerror(std::string error);
 
 %}
 %error-verbose

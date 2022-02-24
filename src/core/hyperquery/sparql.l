@@ -1,7 +1,8 @@
-%option noyywrap
+%option yylineno
 
 %{
 #include <stdio.h>
+#include "core/common/errors.hpp"
 #include "core/hyperquery/absyn.hpp"
 #include "sparql.tab.h"
 %}
@@ -53,3 +54,14 @@
 -?([0-9]+\.[0-9]*)|\.[0-9]+ {yylval.str = yytext;return decimal;}
 
 %%
+
+int yywrap(void) {
+    BEGIN INITIAL;
+    return 1;
+}
+
+void yyerror(std::string error) {
+    yywrap();
+    logstream(LOG_ERROR) << "line " << yylineno << ": " << error << LOG_endl;
+    throw wukong::WukongException(wukong::SYNTAX_ERROR);
+}

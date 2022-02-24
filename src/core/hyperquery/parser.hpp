@@ -57,6 +57,8 @@
 #include "utils/assertion.hpp"
 
 extern int yyparse(void);
+extern void yyrestart(FILE * input_file);
+extern int yylineno;
 extern FILE *yyin;
 
 namespace wukong {
@@ -269,15 +271,17 @@ public:
             return FILE_NOT_FOUND; // file not found
         }
         parser->clear();
+        yyrestart(yyin);
+        yylineno= 1;
         try {
             yyparse();
             transfer(*parser, sq);
         } catch (const HyperParser::ParserException &e) {
             logstream(LOG_ERROR) << "Failed to parse a SPARQL query: "
                                  << e.message << LOG_endl;
-            fclose(yyin);
             return SYNTAX_ERROR;
         }
+        fclose(yyin);
 
         logstream(LOG_INFO) << "Parsing a SPARQL query is done." << LOG_endl;
         return SUCCESS;
