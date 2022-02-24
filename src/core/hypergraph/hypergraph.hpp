@@ -555,6 +555,7 @@ public:
         }
 
         start = timer::get_usec();
+        v2estore->refresh();
         init_v2estore(v2etriples);
         end = timer::get_usec();
         logstream(LOG_INFO) << "[HyperGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
@@ -562,6 +563,7 @@ public:
 
         // ========== init HyperEdge KV ==========
         start = timer::get_usec();
+        hestore->refresh();
         init_hestore(hyperedges);
         end = timer::get_usec();
         logstream(LOG_INFO) << "[HyperGraph] #" << sid << ": " << (end - start) / 1000 << "ms "
