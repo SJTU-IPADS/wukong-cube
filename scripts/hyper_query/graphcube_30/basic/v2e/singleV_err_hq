@@ -1,0 +1,3 @@
+SELECT * WHERE {
+	"博时主题" buildin:edges(ub:"经营基金") ?E
+}

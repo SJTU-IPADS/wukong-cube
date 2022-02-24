@@ -1,0 +1,6 @@
+SELECT ?X WHERE {
+	["DANIEL_DONGNING_SUN的经营基金", "毛时超的经营基金"] buildin:vertices ?X
+}
+
+# the result should be:
+#	(7, 1) without vtype

@@ -1,0 +1,8 @@
+PREFIX dblp: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT * WHERE {
+	"华润医药商业集团有限公司" buildin:intersectVertices("客户", 2) ?N
+}
+
+# the result should be:
+#	(32, 1) with hypertype("客户")
