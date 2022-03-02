@@ -1,5 +1,5 @@
 PREFIX dblp: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
 SELECT ?E_CO WHERE {
-	[<http://www.DepartmentX.UniversityY.edu/Entity65536>, <http://www.DepartmentX.UniversityY.edu/Entity65537>] buildin:edges(dblp:hypertype12) ?E_CO
+	[<http://www.DepartmentX.UniversityY.edu/Entity65552>, <http://www.DepartmentX.UniversityY.edu/Entity65554>] buildin:edges(dblp:hypertype19) ?E_CO
 }
