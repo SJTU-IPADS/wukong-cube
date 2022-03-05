@@ -1,0 +1,27 @@
+SELECT ?Person ?E_Party ?E_Board ?E_Leader WHERE {
+    ?E_Party buildin:etype "党群干部"
+	?E_Party buildin:vertices ?Person
+	?Person buildin:edges("董事会成员") ?E_Board
+	?Person buildin:edges("高管成员") ?E_Leader
+}
+
+# find the person that is in a "党群干部" hyperedge, 
+# a "董事会成员" hyperedge and a "高管成员" hyperedge
+# 
+# the execution will be: 
+# (1) const-to-unknown GE
+# (2) known-to-unknown E2V
+# (3) known-to-unknown V2E
+# (4) known-to-unknown V2E
+#
+# the result should be: unknown yet
+#
+# the origin query:
+; SELECT ?Person WHERE {
+;     ?E_Party buildin:etype "党群干部"
+;     ?E_Board buildin:etype "董事会成员"
+;     ?E_Leader buildin:etype "高管成员"
+; 	?E_Party buildin:vertices ?Person
+; 	?E_Board buildin:vertices ?Person
+; 	?E_Leader buildin:vertices ?Person
+; }

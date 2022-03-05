@@ -1,6 +1,12 @@
-PREFIX dblp: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-
-SELECT * WHERE {
-	?E_CO buildin:etype dblp:hypertype12
-	?E_CO buildin:vertices ?X
+SELECT ?E_MF ?X WHERE {
+	?E_MF buildin:etype "管理基金"
+	?E_MF buildin:vertices ?X
 }
+
+# find all the "管理基金" hyperedges and their vids
+# 
+# the execution will be: 
+# (1) const-to-unknown GE
+# (2) known-to-unknown E2V
+#
+# the result should be: unknown yet

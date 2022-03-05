@@ -1,0 +1,14 @@
+SELECT ?Person1 ?E_Manager WHERE {
+    ?E_Manager buildin:etype "基金的经理"
+    ?E_Manager buildin:vertices ?Person1 
+    ?Person1 buildin:intersectVertices("基金的经理", 5) ?Person2
+}
+
+# find and person which is in more than 5 "基金的经理" hyperedge
+# 
+# the execution will be: 
+# (1) const-to-unknown GE
+# (2) known-to-unknown E2V
+# (3) known-to-unknown V2V
+#
+# the result should be: unknown yet
