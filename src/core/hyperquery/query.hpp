@@ -74,33 +74,40 @@ private:
 public:
     enum SQState { SQ_PATTERN = 0, SQ_UNION, SQ_FILTER, SQ_OPTIONAL, SQ_FINAL, SQ_REPLY };
     enum PatternType { GV, GE, GP, V2E, E2V, E2E_ITSCT, E2E_CT, E2E_IN, V2V, LAST_TYPE};
+    enum ParamType { P_ETYPE, P_VTYPE, P_GE, P_LE, P_GT, P_LT, P_EQ, P_NE, NO_TYPE };
 
     class Param {
         friend class boost::serialization::access;
     
     public:
-        data_type type = SID_t;
+        ParamType p_type = P_ETYPE;
+
+        data_type type = SID_t; // TODO: remove it
         sid_t sid = 0;
         heid_t heid = 0;
         int num = 0;
 
         Param() {}
-        Param(data_type type, sid_t sid): type(type), sid(sid) {ASSERT_EQ(type, SID_t);}
-        Param(data_type type, heid_t heid): type(type), heid(heid) {ASSERT_EQ(type, HEID_t);}
-        Param(data_type type, int num): type(type), num(num) {ASSERT_EQ(type, INT_t);}
+        Param(ParamType p_type, data_type type, sid_t sid): p_type(p_type), type(type), sid(sid) {ASSERT_EQ(type, SID_t);}
+        Param(ParamType p_type, data_type type, heid_t heid): p_type(p_type), type(type), heid(heid) {ASSERT_EQ(type, HEID_t);}
+        Param(ParamType p_type, data_type type, int num): p_type(p_type), type(type), num(num) {ASSERT_EQ(type, INT_t);}
 
         void print_param() const {
-            static const char *ParamTypeName[7] = { "SID_t", "HEID_t", "INT_t", "FLOAT_t", "DOUBLE_t", "TIME_t", "ALL_t"};
+            static const char *ParamTypeName[9] = { "P_ETYPE", "P_VTYPE", "P_GE", "P_LE", "P_GT", "P_LT", "P_EQ", "P_NE", "NO_TYPE"};
+            static const char *ParamDataTypeName[7] = { "SID_t", "HEID_t", "INT_t", "FLOAT_t", "DOUBLE_t", "TIME_t", "ALL_t"};
             
             // TODO: log error            
-            logstream(LOG_INFO) << "(" << ParamTypeName[type] << ")";
+            logstream(LOG_INFO) << ParamTypeName[p_type] << ": (" << ParamDataTypeName[type] << ")";
             switch(type) {
             case SID_t:
                 logstream(LOG_INFO) << sid;
+                break;
             case HEID_t:
                 logstream(LOG_INFO) << heid;
+                break;
             case INT_t:
                 logstream(LOG_INFO) << num;
+                break;
             }
             logstream(LOG_INFO) << " ";
         }
@@ -352,6 +359,7 @@ public:
             float_res_table.clear();
             double_res_table.clear();
             required_vars.clear();
+            v2c_map.clear();
         }
 
         bool empty() {
@@ -405,6 +413,7 @@ public:
             return ext2col(v2c_map[idx]);
         }
 
+        // get data type from var (pattern variable)
         data_type var_type(ssid_t var) {
             // number variables from -1 and decrease by 1 for each of rest. (i.e., -1, -2, ...)
             ASSERT(var < 0);
@@ -430,24 +439,6 @@ public:
 
         }
 
-        // NORMAL result (i.e., sid)
-        void set_col_num(int n, data_type type = SID_t) {
-            switch (type) {
-            case SID_t:
-                vid_res_table.set_col_num(n);
-                break;
-            case HEID_t:
-                heid_res_table.set_col_num(n);
-                break;
-            case FLOAT_t:
-                float_res_table.set_col_num(n);
-                break;
-            case DOUBLE_t:
-                double_res_table.set_col_num(n);
-                break;
-            }
-        }
-
         int get_col_num(data_type type = ALL_t) {
             switch (type) {
             case SID_t:
@@ -468,41 +459,59 @@ public:
         }
 
         int get_row_num() const {
-            if(vid_res_table.get_col_num() == 0 && 
-               heid_res_table.get_col_num() == 0 &&
-               float_res_table.get_col_num() == 0 &&
-               double_res_table.get_col_num() == 0) {
-                return 0;
-            } else if(vid_res_table.get_col_num() != 0) {
-                return vid_res_table.get_data_size() / vid_res_table.get_col_num();
-            } else if(heid_res_table.get_col_num() != 0) {
-                return heid_res_table.get_data_size() / heid_res_table.get_col_num();
-            } else if(float_res_table.get_col_num() != 0) {
-                return float_res_table.get_data_size() / float_res_table.get_col_num();
-            } else if(double_res_table.get_col_num() != 0) {
-                return double_res_table.get_data_size() / double_res_table.get_col_num();
-            } else { return 0; }
+            return row_num;
+            // if(vid_res_table.get_col_num() == 0 && 
+            //    heid_res_table.get_col_num() == 0 &&
+            //    float_res_table.get_col_num() == 0 &&
+            //    double_res_table.get_col_num() == 0) {
+            //     return 0;
+            // } else if(vid_res_table.get_col_num() != 0) {
+            //     return vid_res_table.get_data_size() / vid_res_table.get_col_num();
+            // } else if(heid_res_table.get_col_num() != 0) {
+            //     return heid_res_table.get_data_size() / heid_res_table.get_col_num();
+            // } else if(float_res_table.get_col_num() != 0) {
+            //     return float_res_table.get_data_size() / float_res_table.get_col_num();
+            // } else if(double_res_table.get_col_num() != 0) {
+            //     return double_res_table.get_data_size() / double_res_table.get_col_num();
+            // } else { return 0; }
         }
 
-        sid_t get_row_col(int r, int c, data_type type = SID_t) {
+        sid_t get_row_col(int r, int c) {
             ASSERT(r >= 0 && c >= 0);
+            return vid_res_table.get_row_col(r, c);
+        }
+
+        heid_t get_row_col_he(int r, int c) {
+            ASSERT(r >= 0 && c >= 0);
+            return heid_res_table.get_row_col(r, c);
+        }
+
+        float get_row_col_float(int r, int c) {
+            ASSERT(r >= 0 && c >= 0);
+            return float_res_table.get_row_col(r, c);
+        }
+
+        double get_row_col_double(int r, int c) {
+            ASSERT(r >= 0 && c >= 0);
+            return double_res_table.get_row_col(r, c);
+        }
+
+        // NORMAL result (i.e., sid)
+        void set_col_num(int n, data_type type = SID_t) {
             switch (type) {
             case SID_t:
-                return vid_res_table.get_row_col(r, c);
+                vid_res_table.set_col_num(n);
+                break;
             case HEID_t:
-                return heid_res_table.get_row_col(r, c);
+                heid_res_table.set_col_num(n);
+                break;
             case FLOAT_t:
-                return float_res_table.get_row_col(r, c);
+                float_res_table.set_col_num(n);
+                break;
             case DOUBLE_t:
-                return double_res_table.get_row_col(r, c);
+                double_res_table.set_col_num(n);
+                break;
             }
-        }
-
-        void load_data(Result& result) {
-            vid_res_table.swap(result.vid_res_table);
-            heid_res_table.swap(result.heid_res_table);
-            float_res_table.swap(result.float_res_table);
-            double_res_table.swap(result.double_res_table);
         }
 
         void update_nrows() {
@@ -520,6 +529,13 @@ public:
             } else if(double_res_table.get_col_num() != 0) {
                 row_num = double_res_table.get_data_size() / double_res_table.get_col_num();
             }
+        }
+
+        void load_data(Result& result) {
+            vid_res_table.swap(result.vid_res_table);
+            heid_res_table.swap(result.heid_res_table);
+            float_res_table.swap(result.float_res_table);
+            double_res_table.swap(result.double_res_table);
         }
 
         void append_res_table_row_to(int r, Result& result) {
@@ -667,6 +683,7 @@ namespace serialization {
 
 template<class Archive>
 void save(Archive & ar, const wukong::HyperQuery::Param &t, unsigned int version) {
+    ar << t.p_type;
     ar << t.type;
     switch (t.type)
     {
@@ -686,6 +703,7 @@ void save(Archive & ar, const wukong::HyperQuery::Param &t, unsigned int version
 
 template<class Archive>
 void load(Archive & ar, wukong::HyperQuery::Param &t, unsigned int version) {
+    ar >> t.p_type;
     ar >> t.type;
     switch (t.type)
     {

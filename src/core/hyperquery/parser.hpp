@@ -104,82 +104,29 @@ private:
     // (e.g., <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> 1)
     StringServer *str_server;
 
-    /// HyperParser::PatternType to HyperQuery::PatternType
-    HyperQuery::PatternType transfer_type(const HyperParser::PatternType src) {
-        return static_cast<HyperQuery::PatternType>(src);
-    }
-
-    /// HyperParser::Element to input lists in HyperQuery::Param
-    HyperQuery::Param transfer_param(const HyperParser::Element &e) {
-        switch (e.type) {
-        case HyperParser::Element::IRI:
-        {
-            std::string str = "<" + e.value + ">"; // IRI
-            if (!str_server->exist(str)) {
-                if (!str_server->exist_he(str)) {
-                    logstream(LOG_ERROR) << "Unknown IRI: " + str << LOG_endl;
-                    throw WukongException(SYNTAX_ERROR);
-                } else {
-                    return HyperQuery::Param(HEID_t, str_server->str2id_he(str));
-                }
-            } else {
-                return HyperQuery::Param(SID_t, str_server->str2id(str));
-            }
-        }
-        case HyperParser::Element::Literal:
-            if (!str_server->exist(e.value))
-                if (!str_server->exist_he(e.value)) {
-                    logstream(LOG_ERROR) << "Unknown STRING: " + e.value << LOG_endl;
-                    throw WukongException(SYNTAX_ERROR);
-                } else 
-                    return HyperQuery::Param(HEID_t, str_server->str2id_he(e.value));
-            else 
-                return HyperQuery::Param(SID_t, str_server->str2id(e.value));
-        case HyperParser::Element::Int:
-            ASSERT_GE(e.num, 0);     // int param should be a positive number
-            return HyperQuery::Param(INT_t, e.num);
-        default:
-            throw WukongException(SYNTAX_ERROR);
-        }
-
-        throw WukongException(SYNTAX_ERROR);
-    }
-    
-    /// HyperParser::ElementList to HyperQuery::Param list
-    std::vector<HyperQuery::Param> transfer_param_list(const HyperParser::ElementList &el) {
-        std::vector<HyperQuery::Param> params;
-        for (auto &&e : el) params.insert(params.begin(), transfer_param(e));
-        return params;        
-    }
-
     /// HyperParser::Element to ssid
-    ssid_t transfer_element(const HyperParser::Element &e) {
+    /// output is either a variable or a htid/tid
+    ssid_t transfer_output(const HyperParser::Element &e) {
+        std::string str = e.value;
         switch (e.type) {
         case HyperParser::Element::Variable:
             return e.id;
         case HyperParser::Element::IRI:
-        {
-            std::string str = "<" + e.value + ">"; // IRI
+            str = "<" + str + ">"; // IRI
+        case HyperParser::Element::Literal:
             if (!str_server->exist(str)) {
                 if (!str_server->exist_he(str)) {
                     logstream(LOG_ERROR) << "Unknown IRI: " + str << LOG_endl;
                     throw WukongException(SYNTAX_ERROR);
                 } else {
-                    return str_server->str2id_he(str);
+                    logstream(LOG_ERROR) << "UnExpected HyperEdge in Parameter: " + str << LOG_endl;
+                    throw WukongException(SYNTAX_ERROR);
+                    // return HyperQuery::Param(HEID_t, str_server->str2id_he(str));
                 }
             } else {
                 return str_server->str2id(str);
             }
-        }
-        case HyperParser::Element::Literal:
-            if (!str_server->exist(e.value))
-                if (!str_server->exist_he(e.value)) {
-                    logstream(LOG_ERROR) << "Unknown STRING: " + e.value << LOG_endl;
-                    throw WukongException(SYNTAX_ERROR);
-                } else 
-                    return str_server->str2id_he(e.value);
-            else 
-                return str_server->str2id(e.value);
+            break;
         default:
             throw WukongException(SYNTAX_ERROR);
         }
@@ -190,13 +137,14 @@ private:
     /// HyperParser::ElementList to input lists in HyperQuery::Pattern
     void transfer_input_list(const HyperParser::ElementList &el, HyperQuery::Pattern &pt) {
         for (auto &&e : el) {
+            std::string str = e.value;
             switch (e.type) {
             case HyperParser::Element::Variable:
                 pt.input_vars.push_back(e.id);
                 break;
             case HyperParser::Element::IRI:
-            {
-                std::string str = "<" + e.value + ">"; // IRI
+                str = "<" + str + ">"; // IRI
+            case HyperParser::Element::Literal:
                 if (!str_server->exist(str)) {
                     if (!str_server->exist_he(str)) {
                         logstream(LOG_ERROR) << "Unknown IRI: " + str << LOG_endl;
@@ -208,19 +156,46 @@ private:
                     pt.input_vids.push_back(str_server->str2id(str));
                 }
                 break;
-            }
-            case HyperParser::Element::Literal:
-                if (!str_server->exist(e.value))
-                    if (!str_server->exist_he(e.value)) {
-                        logstream(LOG_ERROR) << "Unknown STRING: " + e.value << LOG_endl;
-                        throw WukongException(SYNTAX_ERROR);
-                    } else 
-                        pt.input_eids.push_back(str_server->str2id_he(e.value));
-                else 
-                    pt.input_vids.push_back(str_server->str2id(e.value));
-                break;
             default:
                 e.print_element();
+                throw WukongException(SYNTAX_ERROR);
+            }
+        }
+    }
+
+    /// HyperParser::ElementList to HyperQuery::Param list
+    /// the default type of a Int parameter is HyperQuery::P_ETYPE
+    /// the default type of a SID_t parameter is HyperQuery::P_GE
+    void transfer_param_list(const HyperParser::ParamList &el, HyperQuery::Pattern &pt) {
+        for (auto &&e : el) {
+            HyperQuery::ParamType type = static_cast<HyperQuery::ParamType>(e.type);
+            std::string str = e.value.value; // IRI
+            // tranfer parameter value
+            switch (e.value.type) {
+            case HyperParser::Element::IRI:
+                str = "<" + str + ">"; // IRI
+            case HyperParser::Element::Literal:
+                if (!str_server->exist(str)) {
+                    if (!str_server->exist_he(str)) {
+                        logstream(LOG_ERROR) << "Unknown IRI: " + str << LOG_endl;
+                        throw WukongException(SYNTAX_ERROR);
+                    } else {
+                        logstream(LOG_ERROR) << "UnExpected HyperEdge in Parameter: " + str << LOG_endl;
+                        throw WukongException(SYNTAX_ERROR);
+                        // return HyperQuery::Param(HEID_t, str_server->str2id_he(str));
+                    }
+                } else {
+                    if (type == HyperQuery::NO_TYPE) type = HyperQuery::P_ETYPE;
+                    pt.params.insert(pt.params.begin(), HyperQuery::Param(type, SID_t, str_server->str2id(str)));
+                }
+                break;
+            case HyperParser::Element::Int:
+                ASSERT_GE(e.value.num, 0);     // int param should be a positive number
+                if (type == HyperQuery::NO_TYPE) type = HyperQuery::P_GE;
+                pt.params.insert(pt.params.begin(), HyperQuery::Param(type, INT_t, e.value.num));
+                break;
+            default:
+                logstream(LOG_ERROR) << "UnRecognized Parameter" << LOG_endl;
                 throw WukongException(SYNTAX_ERROR);
             }
         }
@@ -232,15 +207,14 @@ private:
         for (auto const &p : src.patterns) {
             HyperQuery::Pattern pattern;
             // parse all the elements
-            pattern.type = transfer_type(p.type);
+            pattern.type = static_cast<HyperQuery::PatternType>(p.type);
+            pattern.output_var = transfer_output(p.output_var);
             transfer_input_list(p.input_vars, pattern);
-            pattern.output_var = transfer_element(p.output_var);
-            pattern.params = transfer_param_list(p.params);
+            transfer_param_list(p.params, pattern);
             // check invalid elements
             ASSERT_GT(p.input_vars.size(), 0);
-            ASSERT_LT(pattern.output_var, 0);
             // add the new pattern
-            dst.patterns.push_back(pattern);
+            dst.patterns.insert(dst.patterns.begin(), pattern);
         }
     }
 

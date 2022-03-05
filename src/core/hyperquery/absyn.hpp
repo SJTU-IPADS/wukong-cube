@@ -35,6 +35,7 @@ class HyperParser {
 public:
     enum PatternType { GV, GE, GP, V2E, E2V, E2E_ITSCT, E2E_CT, E2E_IN, V2V, LAST_TYPE};
     enum PatternSuffix {Suffix_Dot, Suffix_LArrow, Suffix_RArrow, Suffix_Blank};
+    enum ParamType { P_ETYPE, P_VTYPE, P_GE, P_LE, P_GT, P_LT, P_EQ, P_NE, NO_TYPE };
 
     /// A parsing exception
     struct ParserException {
@@ -98,6 +99,16 @@ public:
     };
     typedef std::vector<Element> ElementList;
 
+    struct Param {
+        ParamType type;
+        Element value;
+  
+        Param(){}
+        Param(ParamType type, Element value): type(type), value(value) {}
+        ~Param(){}
+    };
+    typedef std::vector<Param> ParamList;
+
     /// A graph pattern
     struct Pattern {
         PatternType type;
@@ -105,9 +116,9 @@ public:
         ElementList input_vars;
         Element output_var;
         // other parameter of the hyper pattern
-        ElementList params;
+        ParamList params;
         /// Constructor
-        Pattern(PatternType type, ElementList input, Element output, ElementList params)
+        Pattern(PatternType type, ElementList input, Element output, ParamList params)
             : type(type), input_vars(input), output_var(output), params(params) { }
         /// Destructor
         ~Pattern() {}
@@ -137,7 +148,7 @@ private:
 
     // record pattern meta
     PatternType ty;
-    ElementList params;
+    ParamList params;
 
     /// Lookup or create a named variable
     ssid_t nameVariable(const std::string &name) {
@@ -260,13 +271,38 @@ public:
 	}
 
     // Register meta data in pattern(pattern type + pattern parameters)
-    void addPatternMeta(int type, ElementList* params) {
+    void addPatternMeta(int type, ParamList* params) {
         logstream(LOG_DEBUG) << "[HyperParser] add pattern meta" << LOG_endl; 
         this->ty = static_cast<PatternType>(type);
         if (params) {
             this->params = *params;
             delete params;
-        }
+        } else 
+            this->params.clear();
+    }
+
+    ParamList* makeParamList(Param* newParam, ParamList* oldParamList) {
+        logstream(LOG_DEBUG) << "[HyperParser] make param list" << LOG_endl; 
+        if (!newParam) throw ParserException("Unexpected error making ParamList\n");
+
+        // if the first element allocate a new ElementList
+        ParamList* newParamList;
+        if(!oldParamList) newParamList = new ParamList();
+        else newParamList = oldParamList;
+
+        // add new iri into old list
+        newParamList->push_back(*newParam);
+        delete newParam;
+
+        return newParamList;        
+    }
+
+    Param* makeParam(int type, Element* value) {
+        logstream(LOG_DEBUG) << "[HyperParser] make param" << LOG_endl; 
+        if (!value) throw ParserException("Unexpected error making Parameter\n");
+        Param* param = new Param(static_cast<ParamType>(type), *value);
+        delete value;
+        return param;
     }
 
     // make ElementList

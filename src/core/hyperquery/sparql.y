@@ -26,6 +26,8 @@ void yyerror(std::string error);
 %union {
   int number;
   char* str;
+  wukong::HyperParser::Param* param;
+  wukong::HyperParser::ParamList* param_list;
   wukong::HyperParser::Element* element;
   wukong::HyperParser::ElementList* element_list;
   wukong::HyperParser::Pattern* pattern;
@@ -40,11 +42,14 @@ void yyerror(std::string error);
   anon equal not_equal less less_or_equal greater greater_or_equal
   at type not_ or_ and_ plus_ minus_ mul_ div_
   integer decimal double_ percent
-  buildin edges vertices intersect_edges contain_edges in_edges intersect_vertices /* hyper query symbol */
+  buildin etype vtype edges vertices intersect_edges  /* hyper query symbol */
+  contain_edges in_edges intersect_vertices
 
 
-%type<number> PATTERN_TYPE
+%type<number> PATTERN_TYPE PATTERN_PARAM_TYPE
 %type<str> identifier iri variable integer string_
+%type<param> PATTERN_PARAM
+%type<param_list> PATTERN_PARAM_LIST
 %type<element> PATTERN_ELEMENT
 %type<element_list> PATTERN_ELEMENT_LIST PATTERN_ELEMENT_GROUP
 %type<pattern> PATTERN
@@ -96,11 +101,26 @@ PATTERN: PATTERN_ELEMENT_GROUP PATTERN_META PATTERN_ELEMENT {
 PATTERN_ELEMENT_GROUP: PATTERN_ELEMENT {$$=parser->makeElementList($1, NULL);} 
                     | lbracket PATTERN_ELEMENT_LIST rbracket {$$ = $2;}
 
-PATTERN_META: buildin colon PATTERN_TYPE {parser->addPatternMeta($3, NULL);}
-            | buildin colon PATTERN_TYPE lparen PATTERN_ELEMENT_LIST rparen {parser->addPatternMeta($3, $5);}
-
 PATTERN_ELEMENT_LIST: PATTERN_ELEMENT {$$=parser->makeElementList($1, NULL);}
                     | PATTERN_ELEMENT comma PATTERN_ELEMENT_LIST {$$=parser->makeElementList($1, $3);}
+
+PATTERN_META: buildin colon PATTERN_TYPE {parser->addPatternMeta($3, NULL);}
+            | buildin colon PATTERN_TYPE lparen PATTERN_PARAM_LIST rparen {parser->addPatternMeta($3, $5);}
+
+PATTERN_PARAM_LIST: PATTERN_PARAM {$$=parser->makeParamList($1, NULL);}
+                    | PATTERN_PARAM comma PATTERN_PARAM_LIST {$$=parser->makeParamList($1, $3);}
+
+PATTERN_PARAM: PATTERN_ELEMENT {$$=parser->makeParam(HyperParser::ParamType::NO_TYPE, $1);}
+             | PATTERN_PARAM_TYPE PATTERN_ELEMENT {$$=parser->makeParam($1, $2);} 
+
+PATTERN_PARAM_TYPE: etype {$$=HyperParser::ParamType::P_ETYPE;}
+                  | vtype {$$=HyperParser::ParamType::P_VTYPE;}
+                  | equal {$$=HyperParser::ParamType::P_EQ;}
+                  | not_equal {$$=HyperParser::ParamType::P_NE;}
+                  | less {$$=HyperParser::ParamType::P_LT;}
+                  | less_or_equal {$$=HyperParser::ParamType::P_LE;}
+                  | greater {$$=HyperParser::ParamType::P_GT;}
+                  | greater_or_equal {$$=HyperParser::ParamType::P_GE;}
 
 PATTERN_ELEMENT: iri {$$=parser->makeIriElement($1, false);}
                 | identifier colon identifier {$$=parser->makePrefixIriElement($1,$3,false);}
@@ -108,7 +128,9 @@ PATTERN_ELEMENT: iri {$$=parser->makeIriElement($1, false);}
                 | integer {$$=parser->makeIntElement(atoi($1));}
                 | string_ {$$=parser->makeLiteralElement($1);}
 
-PATTERN_TYPE: edges {$$=HyperParser::PatternType::V2E;}
+PATTERN_TYPE: etype {$$=HyperParser::PatternType::GE;}
+            | vtype {$$=HyperParser::PatternType::GV;}
+            | edges {$$=HyperParser::PatternType::V2E;}
             | vertices {$$=HyperParser::PatternType::E2V;}
             | intersect_edges {$$=HyperParser::PatternType::E2E_ITSCT;}
             | contain_edges {$$=HyperParser::PatternType::E2E_CT;}

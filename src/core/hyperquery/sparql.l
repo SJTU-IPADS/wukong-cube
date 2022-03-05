@@ -14,6 +14,8 @@
 "SELECT"|"select" {return select_;}
 "WHERE"|"where" {return where;}
 "buildin" {return buildin;}
+"etype" {return etype;}
+"vtype" {return vtype;}
 "edges" {return edges;}
 "vertices" {return vertices;}
 "intersectEdges" {return intersect_edges;}

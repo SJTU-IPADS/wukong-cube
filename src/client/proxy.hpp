@@ -304,25 +304,45 @@ public:
 
     // output result of current query
     void output_result(std::ostream &stream, HyperQuery &q, int sz) {
+        std::vector<ssid_t> &display_vars = q.result.required_vars;
         for (int i = 0; i < sz; i++) {
             stream << i + 1 << ": ";
 
-            // entity
-            for (int j = 0; j < q.result.get_col_num(SID_t); j++) {
-                int id = q.result.get_row_col(i, j);
-                if (str_server->exist(id))
-                    stream << str_server->id2str(id) << "\t";
-                else
-                    stream << id << "\t";
-            }
-
-            // hyperedge
-            for (int j = 0; j < q.result.get_col_num(HEID_t); j++) {
-                int id = q.result.get_row_col(i, j, HEID_t);
-                if (str_server->exist_he(id))
-                    stream << str_server->id2str_he(id) << "\t";
-                else
-                    stream << id << "\t";
+            for (int j = 0; j < display_vars.size(); j++) {
+                data_type type = q.result.var_type(display_vars[j]);
+                int col = q.result.var2col(display_vars[j]);
+                switch(type) {
+                    case SID_t: 
+                    {
+                        sid_t id = q.result.get_row_col(i, col);
+                        if (str_server->exist(id))
+                            stream << str_server->id2str(id) << "\t";
+                        else
+                            stream << id << "\t";
+                        break;
+                    }
+                    case HEID_t:
+                    {
+                        heid_t id = q.result.get_row_col_he(i, col);
+                        if (str_server->exist_he(id))
+                            stream << str_server->id2str_he(id) << "\t";
+                        else
+                            stream << id << "\t";
+                        break;
+                    }
+                    case FLOAT_t:
+                    {
+                        float value = q.result.get_row_col_float(i, col);
+                        stream << value << "\t";
+                        break;
+                    }
+                    case DOUBLE_t:
+                    {
+                        double value = q.result.get_row_col_double(i, col);
+                        stream << value << "\t";
+                        break;
+                    }
+                }
             }
 
             // TODO: attribute
