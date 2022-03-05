@@ -274,6 +274,8 @@ public:
     virtual sid_t* get_vids_by_htype(int tid, sid_t edge_type, uint64_t& sz) {}
     // get heid list by vid and hyper type
     virtual std::vector<std::pair<sid_t*, uint64_t>> get_edges_by_type(int tid, sid_t edge_type) {}
+    // get the type of a hyperedge
+    virtual heid_t* get_type_by_heid(int tid, heid_t eid, uint64_t& sz) {}
 
     virtual int dynamic_load_data(std::string dname, bool check_dup) {}
 

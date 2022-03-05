@@ -68,6 +68,7 @@ class HyperGraph : public DGraph {
 protected:
     using tbb_hedge_hash_map = tbb::concurrent_hash_map<sid_t, std::vector<heid_t>>;
     using tbb_hv_hash_map = tbb::concurrent_hash_map<sid_t, std::set<sid_t>>;
+    using tbb_ht_hash_map = tbb::concurrent_hash_map<heid_t, std::set<sid_t>>;
 
     const int HE_RATIO = 50;
     const int V2E_RATIO = 50;
@@ -85,9 +86,11 @@ protected:
     // std::vector<uint64_t> he_offsets;
     // sid_t* he_store;
 
-    // hyperedge-index
+    // hyperedge-index (htid -> heids)
     tbb_hedge_hash_map he_map;
-    // hyperege-vertex-index
+    // hyperedge-type-index (htid -> heids)
+    tbb_ht_hash_map ht_map;
+    // hyperege-vertex-index (htid -> vids)
     tbb_hv_hash_map hv_map;
 
     void collect_idx_info(RDFStore::slot_t& slot) {
@@ -311,6 +314,11 @@ protected:
             he_map.insert(a, edge.edge_type);
             a->second.push_back(edge.id);
 
+            // hyperedge-type-index
+            tbb_ht_hash_map::accessor aht;
+            ht_map.insert(aht, edge.id);
+            aht->second.insert(edge.edge_type);
+
             // hyperege-vertex-index
             tbb_hv_hash_map::accessor ahv;
             hv_map.insert(ahv, edge.edge_type);
@@ -320,7 +328,7 @@ protected:
     }
 
     void insert_he_index() {
-        // insert hypertype index(htid -> heids)
+        // insert hyperedge index(htid -> heids)
         for (auto const& e : he_map) {
             // alloc entries
             sid_t edge_type = e.first;
@@ -335,6 +343,23 @@ protected:
             // insert heids as value
             for (auto const& heid : e.second)
                 this->v2estore->values[off++] = heid;
+        }
+
+        // insert hyperedge type index(heid -> htids)
+        for (auto const& e : ht_map) {
+            // alloc entries
+            heid_t heid = e.first;
+            uint64_t sz = e.second.size();
+            uint64_t off = this->v2estore->alloc_entries(sz, 0);
+
+            // insert hyper type as index key
+            uint64_t slot_id = this->v2estore->insert_key(
+                hvkey_t(heid, EDGE_TYPE),
+                iptr_t(sz, off));
+
+            // insert heids as value
+            for (auto const& htid : e.second)
+                this->v2estore->values[off++] = htid;
         }
 
         // insert hypertype-vertex index(htid -> vids)
@@ -353,6 +378,11 @@ protected:
             for (auto const& vid : hv.second)
                 this->hestore->values[off++] = vid;
         }
+   
+        // clear maps
+        tbb_hedge_hash_map().swap(he_map);
+        tbb_ht_hash_map().swap(ht_map);
+        tbb_hv_hash_map().swap(hv_map);
     }
 
     void init_v2estore(std::vector<std::vector<V2ETriple>>& v2etriples) {
@@ -623,6 +653,11 @@ public:
             result.push_back(std::make_pair(vids, sz));
         }
         return result;
+    }
+
+    // get the type of a hyperedge
+    heid_t* get_type_by_heid(int tid, heid_t eid, uint64_t& sz) {
+        return v2estore->get_values(tid, this->sid, hvkey_t(eid, EDGE_TYPE), sz);
     }
 
     virtual int dynamic_load_data(std::string dname, bool check_dup) {}
