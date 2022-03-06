@@ -15,7 +15,7 @@ SELECT ?Person ?E_Party ?E_Board ?E_Leader WHERE {
 # (3) known-to-unknown V2E
 # (4) known-to-unknown V2E
 #
-# the result should be: unknown yet
+# the result should be: (6, 4)
 #
 # the origin query:
 ; SELECT ?Person WHERE {

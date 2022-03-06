@@ -10,4 +10,4 @@ SELECT ?X ?E_Holder WHERE {
 # (1) single-const-to-unknown E2V
 # (2) single-known-to-unknown V2E
 #
-# the result should be: unknown yet
+# the result should be: (4, 2)

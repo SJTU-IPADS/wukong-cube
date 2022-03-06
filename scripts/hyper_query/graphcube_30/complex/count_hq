@@ -11,4 +11,4 @@ SELECT ?Person1 ?E_Manager WHERE {
 # (2) known-to-unknown E2V
 # (3) known-to-unknown V2V
 #
-# the result should be: unknown yet
+# the result should be: (23001, 3)

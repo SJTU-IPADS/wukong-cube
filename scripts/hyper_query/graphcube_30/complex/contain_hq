@@ -10,7 +10,7 @@ SELECT ?E_Host ?E_Manage WHERE {
 # (1) const-to-unknown GE
 # (2) known-to-unknown E2E
 #
-# the result should be: unknown yet
+# the result should be: (13, 2)
 # 
 # origin query:
 # SELECT ?E_Host ?E_Manage WHERE {

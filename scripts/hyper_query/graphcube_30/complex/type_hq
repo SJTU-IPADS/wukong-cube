@@ -9,4 +9,4 @@ SELECT ?E_MF ?X WHERE {
 # (1) const-to-unknown GE
 # (2) known-to-unknown E2V
 #
-# the result should be: unknown yet
+# the result should be: (12301 , 2)
