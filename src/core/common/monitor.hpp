@@ -70,6 +70,9 @@ private:
 
     std::unordered_map<int, req_stats> stats_map; // CDF
 
+    // step latency
+    std::vector<uint64_t> step_latency;
+
 public:
     void init() {
         init_time = timer::get_usec();
@@ -97,8 +100,21 @@ public:
         done_time = timer::get_usec();
     }
 
+    // for step latency
+    void add_step_latency(std::vector<uint64_t> & steps) {
+        if (step_latency.empty()) step_latency.swap(steps);
+        else {
+            for(size_t i = 0; i < steps.size(); i++)
+                step_latency[i] += steps[i];
+        }
+    }
+
     // for single query
     void print_latency(int round = 1) {
+        if (!step_latency.empty()) {
+            for(size_t i = 0; i < step_latency.size(); i++)
+                logstream(LOG_INFO) << "step " << i << " latency: " << (step_latency[i] / round) << " usec" << LOG_endl;
+        }
         logstream(LOG_INFO) << "(average) latency: " << ((done_time - init_time) / round) << " usec" << LOG_endl;
     }
 

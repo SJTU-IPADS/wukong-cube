@@ -343,15 +343,20 @@ public:
         int attr_col_num = 0; // FIXME: why not no attr_row_num
         int status_code = SUCCESS;
 
+        // data
         ResultTable<sid_t> vid_res_table;
         ResultTable<heid_t> heid_res_table;
         ResultTable<float> float_res_table;
         ResultTable<double> double_res_table;
 
+        // variables
         bool blind = false;
         int nvars = 0; // the number of variables
         std::vector<ssid_t> required_vars; // variables selected to return
         std::vector<int> v2c_map; // from variable ID (vid) to column ID, index: vid, value: col
+
+        // latency record
+        std::vector<uint64_t> step_latency;
 
         void clear() {
             vid_res_table.clear();
@@ -763,6 +768,7 @@ void save(Archive &ar, const wukong::HyperQuery::Result &t, unsigned int version
     ar << t.heid_res_table.col_num;
     ar << t.float_res_table.col_num;
     ar << t.double_res_table.col_num;
+    ar << t.step_latency;
     if(t.vid_res_table.get_col_num() > 0) {
         ar << t.vid_res_table.result_data;
     }
@@ -791,6 +797,7 @@ void load(Archive & ar, wukong::HyperQuery::Result &t, unsigned int version) {
     ar >> t.heid_res_table.col_num;
     ar >> t.float_res_table.col_num;
     ar >> t.double_res_table.col_num;
+    ar >> t.step_latency;
     if(t.vid_res_table.get_col_num() > 0) {
         ar >> t.vid_res_table.result_data;
     }

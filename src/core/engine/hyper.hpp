@@ -916,7 +916,7 @@ private:
     }
 
     bool execute_ops(HyperQuery &query) {
-        uint64_t time, access;
+        uint64_t start, end;
         logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "] execute ops of "
                              << "Q(pqid=" << query.pqid << ", qid=" << query.qid
                              << ", step=" << query.pattern_step << ")"
@@ -941,14 +941,22 @@ private:
                 return false;
             }
 
-            time = timer::get_usec();
+            start = timer::get_usec();
             execute_one_op(query, op);
+            end = timer::get_usec();
+            query.result.step_latency.push_back(end - start);
             logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "]"
                                  << " step = " << query.pattern_step
-                                 << " exec-time = " << (timer::get_usec() - time) << " usec"
+                                 << " exec-time = " << (end - start) << " usec"
                                  << " #cols = " << query.result.get_col_num()
                                  << " #rows = " << query.result.get_row_num()
                                  << LOG_endl;
+
+            // print step result
+            // logstream(LOG_INFO) << query.pattern_step - 1 << ": "
+            //             << query.result.get_row_num() << " row, "
+            //             << query.result.get_col_num() << " col" 
+            //             << LOG_endl;
 
             // if result row = 0 after one pattern, just skip the rest patterns
             if (query.result.get_row_num() == 0)

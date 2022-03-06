@@ -474,6 +474,7 @@ public:
 
             send_request(request);
             reply = recv_hyper_reply();
+            monitor.add_step_latency(reply.result.step_latency);
         }
         monitor.finish();
 
