@@ -603,43 +603,89 @@ private:
 
         // const/known-to-unknown
         if (col == NO_RESULT_COL) {
-            // get all candidate vids by hyper type
-            vids = graph->get_vids_by_htype(tid, he_type, vid_sz);
-
-            // iterate through each hyper edge, and compare them to each const hyperedge
-            for (size_t i = 0; i < vid_sz; i++) {
-                // get related hyperedges
-                heids = graph->get_heids_by_vertex_and_type(tid, vids[i], he_type, he_sz);
-                idList<heid_t> curr_he(heids, he_sz);
-
-                // check if intersect with each const vid
-                bool flag = true;
-                for (auto &&const_he : const_hes)
-                    if (!valid_hes(const_he, curr_he)) {flag = false; break;}
-                if (!flag) continue;
-                else if (input_vars.empty()) {
-                    updated_result.vid_res_table.result_data.push_back(vids[i]);
-                    continue;
+            auto get_vids_by_eids = [&](idList<heid_t> &input, std::set<sid_t> &candidates) {
+                candidates.clear();
+                for (size_t i = 0; i < input.second; i++) {
+                    vids = graph->get_edge_by_heid(tid, input.first[i], vid_sz);
+                    for (size_t k = 0; k < vid_sz; k++) candidates.insert(vids[k]);
                 }
+                return candidates;
+            };
+
+            // const/const+known-to-unknown
+            if (!const_hes.empty()) {
+                // get all candidate vids by hyper type
+                std::set<sid_t> candidates;
+                get_vids_by_eids(const_hes[0], candidates);
+
+                // iterate through each hyper edge, and compare them to each const hyperedge
+                for (auto &&candidate : candidates) {
+                    // get related hyperedges
+                    heids = graph->get_heids_by_vertex_and_type(tid, candidate, he_type, he_sz);
+                    idList<heid_t> curr_he(heids, he_sz);
+
+                    // check if intersect with each const vid
+                    bool flag = true;
+                    for (auto &&const_he : const_hes)
+                        if (!valid_hes(const_he, curr_he)) {flag = false; break;}
+                    if (!flag) continue;
+                    else if (input_vars.empty()) {
+                        updated_result.vid_res_table.result_data.push_back(candidate);
+                        continue;
+                    }
+
+                    // check if intersect with each var vid
+                    for (size_t r = 0; r < nrows; r++) {
+                        flag = true;
+
+                        // check if intersect with each var vid
+                        for (auto &&known_he : known_hes[r])
+                            if (!valid_hes(known_he, curr_he)) {flag = false; break;}
+                        if (!flag) continue;
+                        
+                        // if valid, put the origin row and new vid into res_he
+                        res.append_res_table_row_to(r, updated_result);
+                        updated_result.vid_res_table.result_data.push_back(candidate);
+                    }
+                }
+            }
+            // known-to-unknown
+            else {
+                // cache the first known sid
+                cached = BLANK_ID;
+                std::set<sid_t> candidates;
 
                 // check if intersect with each var vid
                 for (size_t r = 0; r < nrows; r++) {
-                    flag = true;
+                    // get the candidate vids of this row first
+                    ssid_t &start = op.input_vars[0];
+                    sid_t curr = res_vtable.get_row_col(r,res.var2col(start));
+                    if (curr != cached) {
+                        cached = curr;
+                        get_vids_by_eids(known_hes[r][0], candidates);
+                    }
 
-                    // check if intersect with each var vid
-                    for (auto &&known_he : known_hes[r])
-                        if (!valid_hes(known_he, curr_he)) {flag = false; break;}
-                    if (!flag) continue;
-                    
-                    // if valid, put the origin row and new vid into res_he
-                    res.append_res_table_row_to(r, updated_result);
-                    updated_result.vid_res_table.result_data.push_back(vids[i]);
+                    for (auto &&candidate : candidates) {
+                        // get related hyperedges
+                        heids = graph->get_heids_by_vertex_and_type(tid, candidate, he_type, he_sz);
+                        idList<heid_t> curr_he(heids, he_sz);
+
+                        // check if intersect with each var vid
+                        bool flag = true;
+                        for (auto &&known_he : known_hes[r])
+                            if (!valid_hes(known_he, curr_he)) {flag = false; break;}
+                        if (!flag) continue;
+                        
+                        // if valid, put the origin row and new vid into res_he
+                        res.append_res_table_row_to(r, updated_result);
+                        updated_result.vid_res_table.result_data.push_back(candidate);
+                    }
                 }
             }
 
             // update result data
             res.load_data(updated_result);
-            res.add_var2col(op.output_var, res.get_col_num(SID_t), SID_t);
+            res.add_var2col(end, res.get_col_num(SID_t), SID_t);
             res.set_col_num(res.get_col_num(SID_t) + 1, SID_t);
         }
         // const/known-to-known
