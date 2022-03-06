@@ -12,5 +12,5 @@ fi
 cat mpd.hosts | while read machine
 do
 	#Don't copy things like Makefile, CMakeFiles, etc in build directory.
-	rsync -rtuvl --include=build/wukong* --exclude=build/* --exclude=.git --exclude=deps/* --exclude=src/* --exclude=include/* --exclude=utils/* --exclude=generate/* --exclude=test/*  ${root} ${machine}:${root}
+	rsync -rtuvl --include=build/wukong* --exclude=build/* --exclude=.git --exclude=deps/* --exclude=python/ --exclude=docs/ --exclude=src/* --exclude=include/* --exclude=utils/* --exclude=generate/* --exclude=tests/*  ${root} ${machine}:${root}
 done
