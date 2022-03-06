@@ -7,6 +7,8 @@
 *output*
 build/
 deps/
+python/WukongGraph.egg-info*
+python/dist
 scripts/config
 scripts/core.bind
 scripts/mpd.hosts
