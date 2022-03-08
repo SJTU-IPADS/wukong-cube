@@ -1,0 +1,6 @@
+SELECT ?V_C WHERE {
+	?V_C buildin:vtype "公司"
+}
+
+# the result should be 'no result'
+# because right now graphcube_30 is a no-type-vertex hypergraph
