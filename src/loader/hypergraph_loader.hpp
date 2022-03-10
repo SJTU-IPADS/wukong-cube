@@ -86,6 +86,17 @@ protected:
         return id;
     }
 
+    // TODO: more balanced partition
+    int64_t partition_hyperedge(const HyperEdge& edge) {
+        return PARTITION(edge.id);
+        // return PARTITION(edge.vertices[0]);
+    }
+
+    // TODO: more balanced partition
+    int64_t partition_v2etriple(const V2ETriple& triple) {
+        return PARTITION(triple.vid);
+    }
+
     template<class DataType>
     void dedup_data(std::vector<DataType>& data) {
         if (data.size() <= 1)
@@ -226,15 +237,6 @@ protected:
             int num_ids, vid;
             char line[100], c;
             std::string name;
-            // while (file >> edge.edge_type >> num_ids) {
-            //     edge.vertices.resize(num_ids);
-            //     for(int i = 0; i < num_ids; i++){
-            //         file >> edge.vertices[i];
-            //     }
-            //     // TODO: more balanced partition
-            //     int dst_sid = PARTITION(edge.vertices[0]);
-            //     send_hyperedge(localtid, dst_sid, edge);
-            // }
 
             while (file >> name >> edge.edge_type >> std::ws) {
                 ASSERT(is_htid(edge.edge_type));
@@ -267,9 +269,7 @@ protected:
                 id2str.insert(a, edge.id);
                 a->second.assign(name);
 
-                // TODO: more balanced partition
-                int dst_sid = PARTITION(edge.vertices[0]);
-                send_hyperedge(localtid, dst_sid, edge);
+                send_hyperedge(localtid, partition_hyperedge(edge), edge);
             }
         };
 
@@ -337,12 +337,11 @@ protected:
             // TODO: send v2e triples
             for(int j = 0; j < edges[i].size(); j++){
                 for(int k = 0; k < edges[i][j].vertices.size(); k++){
-                    int dst_sid = PARTITION(edges[i][j].vertices[k]);
                     V2ETriple triple;
                     triple.eid = edges[i][j].id;
                     triple.vid = edges[i][j].vertices[k];
                     triple.edge_type = edges[i][j].edge_type;
-                    send_v2e(localtid, dst_sid, triple);
+                    send_v2e(localtid, partition_v2etriple(triple), triple);
                 }
             }
         }
@@ -383,22 +382,6 @@ protected:
             int num_ids, vid;
             char line[100], c;
             std::string name;
-            // while (file >> edge.edge_type >> num_ids) {
-            //     edge.vertices.resize(num_ids);
-            //     for(int i = 0; i < num_ids; i++){
-            //         file >> edge.vertices[i];
-            //     }
-            //     // TODO: more balanced partition
-            //     int dst_sid = PARTITION(edge.vertices[0]);
-            //     if (dst_sid == sid) {
-            //         ASSERT((n + edge.get_num_ids()) * sizeof(sid_t) <= gbuf_partition_sz);
-            //         // buffer the hyperedge and update the counter
-            //         kvs[n] = edge.edge_type;
-            //         kvs[n+1] = edge.vertices.size();
-            //         std::copy(edge.vertices.begin(), edge.vertices.end(), &kvs[n+2]);
-            //         n += edge.get_num_ids();
-            //     }
-            // }
 
             while (file >> name >> edge.edge_type >> std::ws) {
                 ASSERT(is_htid(edge.edge_type));
@@ -430,9 +413,7 @@ protected:
                 id2str.insert(a, edge.id);
                 a->second.assign(name);
 
-                // TODO: more balanced partition
-                int dst_sid = PARTITION(edge.vertices[0]);
-                if (dst_sid == sid) {
+                if (partition_hyperedge(edge) == sid) {
                     ASSERT((n + edge.get_num_ids()) * sizeof(sid_t) <= gbuf_partition_sz);
                     // buffer the hyperedge and update the counter
                     kvs[n] = edge.edge_type;
@@ -519,10 +500,10 @@ protected:
                     // print the progress (step = 5%) of aggregation
                     if (cnt >= total * 0.05) {
                         uint64_t now = wukong::atomic::add_and_fetch(&progress, 1);
-                        if (now % Global::num_engines == 0)
-                            logstream(LOG_INFO) << "[HyperLoader] hyperedge already aggregrate "
-                                                << (now / Global::num_engines) * 5
-                                                << "%" << LOG_endl;
+                        // if (now % Global::num_engines == 0)
+                        //     logstream(LOG_INFO) << "[HyperLoader] hyperedge already aggregrate "
+                        //                         << (now / Global::num_engines) * 5
+                        //                         << "%" << LOG_endl;
                         cnt = 0;
                     }
                 }
@@ -569,10 +550,10 @@ protected:
                     // print the progress (step = 5%) of aggregation
                     if (++cnt >= total * 0.05) {
                         uint64_t now = wukong::atomic::add_and_fetch(&progress, 1);
-                        if (now % Global::num_engines == 0)
-                            logstream(LOG_INFO) << "[HyperLoader] V2ETriple already aggregrate "
-                                                << (now / Global::num_engines) * 5
-                                                << "%" << LOG_endl;
+                        // if (now % Global::num_engines == 0)
+                        //     logstream(LOG_INFO) << "[HyperLoader] V2ETriple already aggregrate "
+                        //                         << (now / Global::num_engines) * 5
+                        //                         << "%" << LOG_endl;
                         cnt = 0;
                     }
                 }
