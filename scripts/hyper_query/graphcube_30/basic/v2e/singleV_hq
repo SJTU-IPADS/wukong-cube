@@ -1,8 +1,6 @@
 SELECT * WHERE {
-	"博时主题" buildin:edges("经营基金") ?E
+	"马涛" buildin:edges("持股") ?E
 }
 
 # the result should be:
-#	(5, 1) with hypertype2("经营基金"), 
-#	(1, 1) with hypertype7/8("管理基金"/"托管基金")
-# 	(7, 1) without hypertype
+#	(15, 1) with hypertype2("持股")

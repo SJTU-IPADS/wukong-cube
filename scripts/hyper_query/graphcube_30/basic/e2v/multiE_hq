@@ -1,6 +1,7 @@
 SELECT ?X WHERE {
-	["DANIEL_DONGNING_SUN的经营基金", "毛时超的经营基金"] buildin:vertices ?X
+	["山东圣阳电源股份有限公司的董事会成员", "深圳盛新锂能集团股份有限公司的董事会成员"] buildin:vertices ?X
 }
 
 # the result should be:
-#	(7, 1) without vtype
+#	(1, 1) without vtype
+#	"马涛"
