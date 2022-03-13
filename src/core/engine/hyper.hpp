@@ -235,7 +235,9 @@ private:
         // Now we don't deal with parameters in E2V
 
         // check if the pattern is valid
+        HyperQuery::HPState& state = query.pstate;
         HyperQuery::Result& res = query.result;
+        auto& e2v_middle_map = query.result.e2v_middle_map;
         ssid_t& end = op.output_var;
         std::vector<int> known_cols;
         for (auto &&var : op.input_vars) {
@@ -243,46 +245,29 @@ private:
             ASSERT_ERROR_CODE(col != NO_RESULT_COL, UNKNOWN_PATTERN);   
             known_cols.push_back(col);
         }
+        if (op.input_vars.empty()) ASSERT_ERROR_CODE(res.empty(), FIRST_PATTERN_ERROR);     // MUST be the first triple pattern
 
-        // multi-const-to-unknown
-        if(op.input_vars.empty()) {
-            // MUST be the first triple pattern
-            ASSERT_ERROR_CODE(res.empty(), FIRST_PATTERN_ERROR);
-            ASSERT_ERROR_CODE(!op.input_eids.empty(), UNKNOWN_PATTERN);
-            heid_t start = op.input_eids[0];
-
+        uint64_t vid_sz = 0;
+        sid_t* vids = NULL;
+        if (op.input_vars.empty() && op.input_eids.size() == 1) {   // single-const-to-unknown
+            heid_t& start = op.input_eids[0];
             // match the first const vid
-            uint64_t vid_sz = 0;
-            sid_t* vids = graph->get_edge_by_heid(tid, start, vid_sz);
-
-            // single-const
-            if (op.input_eids.size() == 1) {
-                res.vid_res_table.result_data.assign(vids, vids + vid_sz);
-            } 
-            // multi-const
-            else {
-                std::set<sid_t> start_vids(vids, vids + vid_sz);
-                for(int i = 1; i < op.input_eids.size(); i++) {
-                    vids = graph->get_edge_by_heid(tid, op.input_eids[i], vid_sz);
-                    intersect_set_v2(start_vids, vids, vid_sz);
-                }
-            
-                // update result data
-                res.vid_res_table.result_data.assign(start_vids.begin(), start_vids.end());
-            }
-        }
-        // multi-known-to-unknown
-        else if (op.input_eids.empty()) {
+            vids = graph->get_edge_by_heid(tid, start, vid_sz);
+            // update result data
+            res.vid_res_table.result_data.assign(vids, vids + vid_sz);
+        } else if (op.input_eids.empty() && op.input_vars.size() == 1) {    // single-known-to-unknown
             HyperQuery::Result updated_result;
             int start_col = known_cols[0];
             heid_t cached = BLANK_ID; // simple dedup for consecutive same vertices
-            sid_t* vids = NULL, *cached_vids = NULL;
-            uint64_t vid_sz = 0, cached_vid_sz = 0;
-            std::set<sid_t> start_vids;
+            sid_t *cached_vids = NULL;
+            uint64_t cached_vid_sz = 0;
             int nrows = res.get_row_num();
 
             for(int i = 0; i < nrows; i++) {
                 heid_t start = res.get_row_col_he(i, start_col);
+
+                // skip the hyperedge on other nodes
+                if (PARTITION(start) != sid) continue;
 
                 // cache the first known eid
                 if (start != cached) { // new KNOWN
@@ -292,75 +277,89 @@ private:
                 vids = cached_vids;
                 vid_sz = cached_vid_sz;
 
-                // single-known-to-unknown
-                if (op.input_eids.size() == 1) {
-                    for (int j = 0; j < vid_sz; j++) {
-                        res.append_res_table_row_to(i, updated_result);
-                        updated_result.vid_res_table.result_data.push_back(vids[j]);   
-                    }
-                }
-                // multi-known-to-unknown
-                else {
-                    // match the first known eid
-                    start_vids.clear();
-                    start_vids.insert(vids, vids + vid_sz);
-
-                    // match the rest known eids
-                    for (int j = 1; j < known_cols.size(); j++) {
-                        heid_t cur = res.get_row_col_he(i, j);
-                        vids = graph->get_edge_by_heid(tid, cur, vid_sz);
-                        intersect_set_v2(start_vids, vids, vid_sz);
-                    }
-                    
-                    // update result data
-                    for (auto &&vid : start_vids) {
-                        res.append_res_table_row_to(i, updated_result);
-                        updated_result.vid_res_table.result_data.push_back(vid);   
-                    }
+                for (int j = 0; j < vid_sz; j++) {
+                    res.append_res_table_row_to(i, updated_result);
+                    updated_result.vid_res_table.result_data.push_back(vids[j]);   
                 }
             }
 
             // update result data
             res.load_data(updated_result);
-        }
-        // multi-const+known-to-unknown
-        else {
-            HyperQuery::Result updated_result;
-            heid_t start = op.input_eids[0];
+        } else if (state == HyperQuery::HP_STEP1) {
+            // do the first step: get as many hyperedges from local kv as possible
 
-            // match const eids
-            uint64_t vid_sz = 0;
-            sid_t* vids = graph->get_edge_by_heid(tid, start, vid_sz);
-            std::set<sid_t> start_vids(vids, vids + vid_sz);
-            for(int i = 1; i < op.input_eids.size(); i++) {
-                vids = graph->get_edge_by_heid(tid, op.input_eids[i], vid_sz);
-                intersect_set_v2(start_vids, vids, vid_sz);
+            // get hyperedges by const eid
+            for(int i = 0; i < op.input_eids.size(); i++) {
+                heid_t cur = op.input_eids[i];
+                if (PARTITION(cur) != sid) continue;
+                vids = graph->get_edge_by_heid(tid, cur, vid_sz);
+                e2v_middle_map[cur] = std::vector<sid_t>(vids, vids + vid_sz);
             }
 
-            // match known eids
-            // heid_t cached = BLANK_ID; // simple dedup for consecutive same vertices
+            // get hyperedges by known eid
             int nrows = res.get_row_num();
             for(int i = 0; i < nrows; i++) {
-                std::set<sid_t> cur_vids = start_vids;
-
-                // match the rest known eids
                 for (int j = 0; j < known_cols.size(); j++) {
                     heid_t cur = res.get_row_col_he(i, known_cols[j]);
+                    if (PARTITION(cur) != sid || e2v_middle_map.find(cur) != e2v_middle_map.end()) continue;
                     vids = graph->get_edge_by_heid(tid, cur, vid_sz);
-                    intersect_set_v2(cur_vids, vids, vid_sz);   
+                    e2v_middle_map[cur] = std::vector<sid_t>(vids, vids + vid_sz);
                 }
-                
+            }
+            return;
+        } else if (state == HyperQuery::HP_STEP2) {
+            // do the second step: intersect all hids sets from different nodes
+
+            // match hyperedges from const eid
+            std::set<sid_t> start_vids;
+            int he_cnt = 0;
+            for(int i = 0; i < op.input_eids.size(); i++) {
+                auto& vids_vec = e2v_middle_map[op.input_eids[i]];
+                if (i == 0) start_vids.insert(vids_vec.begin(), vids_vec.end());
+                else intersect_set_v2(start_vids, vids_vec.data(), vids_vec.size());
+            }
+            if (op.input_vars.empty()) {      // multi-const-to-unknown
                 // update result data
-                for (auto &&vid : cur_vids) {
+                res.vid_res_table.result_data.assign(start_vids.begin(), start_vids.end());
+                goto done;
+            }
+            
+            // match hyperedges from known eid
+            HyperQuery::Result updated_result;
+            int nrows = res.get_row_num();
+            for(int i = 0; i < nrows; i++) {
+                // start vid set for current row
+                std::set<sid_t> cur_vids;
+                heid_t start = res.get_row_col_he(i, known_cols[0]);
+                if (!op.input_eids.empty()) {    // const+known-to-unknown
+                    cur_vids = start_vids;
+                    auto& vids_vec = e2v_middle_map[start];
+                    intersect_set_v2(start_vids, vids_vec.data(), vids_vec.size());
+                }
+                else {                          // multi-known-to-unknown
+                    auto& vids_vec = e2v_middle_map[start];
+                    cur_vids.insert(vids_vec.begin(), vids_vec.end());
+                }
+
+                // rest vid set for current row
+                for (int j = 1; j < known_cols.size(); j++) {
+                    heid_t cur = res.get_row_col_he(i, known_cols[j]);
+                    auto& vids_vec = e2v_middle_map[cur];
+                    intersect_set_v2(cur_vids, vids_vec.data(), vids_vec.size());
+                }
+
+                // update result data
+                for (auto &&vid : start_vids) {
                     res.append_res_table_row_to(i, updated_result);
                     updated_result.vid_res_table.result_data.push_back(vid);   
                 }
             }
-            
+
             // update result data
             res.load_data(updated_result);
-        }
+        } else {ASSERT(false);}
 
+    done:
         // update result metadata
         res.add_var2col(end, res.get_col_num(SID_t), SID_t);
         res.set_col_num(res.get_col_num(SID_t) + 1, SID_t);
@@ -379,7 +378,9 @@ private:
         //      "etype": Specify target hyperedge type
 
         // check if the pattern is valid
+        HyperQuery::HPState& state = query.pstate;
         HyperQuery::Result& res = query.result;
+        auto& v2e_middle_map = query.result.v2e_middle_map;
         ssid_t& end = op.output_var;
         ASSERT_ERROR_CODE(op.params.size() == 1 && op.params[0].p_type == HyperQuery::P_ETYPE, PARAMETER_INVALID);
         sid_t edge_type = op.params[0].sid;
@@ -389,48 +390,31 @@ private:
             ASSERT_ERROR_CODE(col != NO_RESULT_COL, UNKNOWN_PATTERN);   
             known_cols.push_back(col);
         }
+        if (op.input_vars.empty()) ASSERT_ERROR_CODE(res.empty(), FIRST_PATTERN_ERROR);     // MUST be the first triple pattern
 
-        // multi-const-to-unknown
-        if(op.input_vars.empty()) {
-            // MUST be the first triple pattern
-            ASSERT_ERROR_CODE(res.empty(), FIRST_PATTERN_ERROR);
-            ASSERT_ERROR_CODE(!op.input_vids.empty(), UNKNOWN_PATTERN);
-            sid_t start = op.input_vids[0];
-
+        uint64_t eid_sz = 0;
+        heid_t* eids = NULL;
+        if (op.input_vars.empty() && op.input_vids.size() == 1) {   // single-const-to-unknown
+            sid_t& start = op.input_vids[0];
             // match the first const vid
-            uint64_t eid_sz = 0;
-            heid_t* eids = graph->get_heids_by_vertex_and_type(tid, start, edge_type, eid_sz);
-
-            // single-const
-            if (op.input_vids.size() == 1) {
-                res.heid_res_table.result_data.assign(eids, eids + eid_sz);
-            } 
-            // multi-const
-            else {
-                std::set<heid_t> start_eids(eids, eids + eid_sz);
-                for(int i = 1; i < op.input_eids.size(); i++) {
-                    eids = graph->get_heids_by_vertex_and_type(tid, op.input_vids[i], edge_type, eid_sz);
-                    intersect_set_v2(start_eids, eids, eid_sz);
-                }
-            
-                // update result data
-                res.heid_res_table.result_data.assign(start_eids.begin(), start_eids.end());
-            }
-        }
-        // multi-known-to-unknown
-        else if (op.input_vids.empty()) {
+            eids = graph->get_heids_by_vertex_and_type(tid, start, edge_type, eid_sz);
+            // update result data
+            res.heid_res_table.result_data.assign(eids, eids + eid_sz);
+        } else if (op.input_vids.empty() && op.input_vars.size() == 1) {    // single-known-to-unknown
             HyperQuery::Result updated_result;
             int start_col = known_cols[0];
             sid_t cached = BLANK_ID; // simple dedup for consecutive same vertices
-            heid_t* eids = NULL, *cached_eids = NULL;
-            uint64_t eid_sz = 0, cached_eid_sz = 0;
-            std::set<heid_t> start_eids;
+            heid_t* cached_eids = NULL;
+            uint64_t cached_eid_sz = 0;
             int nrows = res.get_row_num();
 
             for(int i = 0; i < nrows; i++) {
                 sid_t start = res.get_row_col(i, start_col);
 
-                // cache the first known vid
+                // skip the hyperedge on other nodes
+                if (PARTITION(start) != sid) continue;
+
+                // cache the first known eid
                 if (start != cached) { // new KNOWN
                     cached = start;
                     cached_eids = graph->get_heids_by_vertex_and_type(tid, start, edge_type, cached_eid_sz);
@@ -438,75 +422,90 @@ private:
                 eids = cached_eids;
                 eid_sz = cached_eid_sz;
 
-                // single-known-to-unknown
-                if (op.input_eids.size() == 1) {
-                    for (int j = 0; j < eid_sz; j++) {
-                        res.append_res_table_row_to(i, updated_result);
-                        updated_result.heid_res_table.result_data.push_back(eids[j]);   
-                    }
-                }
-                // multi-known-to-unknown
-                else {
-                    // match the first known vid
-                    start_eids.clear();
-                    start_eids.insert(eids, eids + eid_sz);
-
-                    // match the rest known vid
-                    for (int j = 1; j < known_cols.size(); j++) {
-                        sid_t cur = res.get_row_col(i, j);
-                        eids = graph->get_heids_by_vertex_and_type(tid, cur, edge_type, eid_sz);
-                        intersect_set_v2(start_eids, eids, eid_sz);
-                    }
-                    
-                    // update result data
-                    for (auto &&heid : start_eids) {
-                        res.append_res_table_row_to(i, updated_result);
-                        updated_result.heid_res_table.result_data.push_back(heid);   
-                    }
+                for (int j = 0; j < eid_sz; j++) {
+                    res.append_res_table_row_to(i, updated_result);
+                    updated_result.heid_res_table.result_data.push_back(eids[j]);   
                 }
             }
 
             // update result data
             res.load_data(updated_result);
-        }
-        // multi-const+known-to-unknown
-        else {
-            HyperQuery::Result updated_result;
-            sid_t start = op.input_eids[0];
+        } else if (state == HyperQuery::HP_STEP1) {
+            // do the first step: get as many hyperedges from local kv as possible
 
-            // match const vid
-            uint64_t eid_sz = 0;
-            heid_t* eids = graph->get_heids_by_vertex_and_type(tid, start, edge_type, eid_sz);
-            std::set<heid_t> start_eids(eids, eids + eid_sz);
-            for(int i = 1; i < op.input_eids.size(); i++) {
-                eids = graph->get_heids_by_vertex_and_type(tid, op.input_eids[i], edge_type, eid_sz);
-                intersect_set_v2(start_eids, eids, eid_sz);
+            // get hyperedges by const eid
+            for(int i = 0; i < op.input_vids.size(); i++) {
+                sid_t cur = op.input_vids[i];
+                if (PARTITION(cur) != sid) continue;
+                eids = graph->get_heids_by_vertex_and_type(tid, cur, edge_type, eid_sz);
+                v2e_middle_map[cur] = std::vector<heid_t>(eids, eids + eid_sz);
             }
 
-            // match known vids
-            // sid_t cached = BLANK_ID; // simple dedup for consecutive same vertices
+            // get hyperedges by known eid
             int nrows = res.get_row_num();
             for(int i = 0; i < nrows; i++) {
-                std::set<heid_t> cur_eids = start_eids;
-
-                // match the rest known vids
                 for (int j = 0; j < known_cols.size(); j++) {
                     sid_t cur = res.get_row_col(i, known_cols[j]);
+                    if (PARTITION(cur) != sid || v2e_middle_map.find(cur) != v2e_middle_map.end()) continue;
                     eids = graph->get_heids_by_vertex_and_type(tid, cur, edge_type, eid_sz);
-                    intersect_set_v2(cur_eids, eids, eid_sz);   
-                }
-                
-                // update result data
-                for (auto &&heid : cur_eids) {
-                    res.append_res_table_row_to(i, updated_result);
-                    updated_result.heid_res_table.result_data.push_back(heid);   
+                    v2e_middle_map[cur] = std::vector<heid_t>(eids, eids + eid_sz);
                 }
             }
+            return;
+        } else if (state == HyperQuery::HP_STEP2) {
+            // do the second step: intersect all hids sets from different nodes
+
+            // match hyperedges from const eid
+            std::set<heid_t> start_eids;
+            for(int i = 0; i < op.input_vids.size(); i++) {
+                auto& eids_vec = v2e_middle_map[op.input_vids[i]];
+                if (i == 0) start_eids.insert(eids_vec.begin(), eids_vec.end());
+                else intersect_set_v2(start_eids, eids_vec.data(), eids_vec.size());
+            }
+
+            // multi-const-to-unknown
+            if (op.input_vars.empty()) {
+                // update result data
+                res.heid_res_table.result_data.assign(start_eids.begin(), start_eids.end());
+                goto done;
+            }
             
+            // match hyperedges from known eid
+            HyperQuery::Result updated_result;
+            int nrows = res.get_row_num();
+            for(int i = 0; i < nrows; i++) {
+                // start vid set for current row
+                std::set<heid_t> cur_eids;
+                sid_t start = res.get_row_col(i, known_cols[0]);
+                if (!op.input_vids.empty()) {    // const+known-to-unknown
+                    cur_eids = start_eids;
+                    auto& eids_vec = v2e_middle_map[start];
+                    intersect_set_v2(start_eids, eids_vec.data(), eids_vec.size());
+                }
+                else {                          // multi-known-to-unknown
+                    auto& eids_vec = v2e_middle_map[start];
+                    cur_eids.insert(eids_vec.begin(), eids_vec.end());
+                }
+
+                // rest vid set for current row
+                for (int j = 1; j < known_cols.size(); j++) {
+                    sid_t cur = res.get_row_col(i, known_cols[j]);
+                    auto& eids_vec = v2e_middle_map[cur];
+                    intersect_set_v2(cur_eids, eids_vec.data(), eids_vec.size());
+                }
+
+                // update result data
+                for (auto &&eid : start_eids) {
+                    res.append_res_table_row_to(i, updated_result);
+                    updated_result.heid_res_table.result_data.push_back(eid);   
+                }
+            }
+
             // update result data
             res.load_data(updated_result);
-        }
+        } else {ASSERT(false);}
 
+    done:
         // update result metadata
         res.add_var2col(end, res.get_col_num(HEID_t), HEID_t);
         res.set_col_num(res.get_col_num(HEID_t) + 1, HEID_t);
@@ -951,32 +950,135 @@ private:
         query.advance_step();
     }
 
-    std::vector<HyperQuery> generate_sub_query(HyperQuery &query, HyperQuery::Pattern& op) {
-        // generate sub requests for all servers
-        std::vector<HyperQuery> sub_queries(Global::num_servers);
-        for (int i = 0; i < Global::num_servers; i++) {
-            // TODO-zyw:
+    void generate_sub_query(HyperQuery &query, std::vector<std::pair<int, HyperQuery>>& sub_queries) {
+        // generate sub requests for certain servers
+        // return pairs of (dst_sid, sub_query)
+        HyperQuery::Pattern& op = query.get_pattern();
+        sub_queries.reserve(Global::num_servers);
+        
+        HyperQuery sub_query = query;
+        sub_query.pstate = HyperQuery::HP_STEP1;
+        sub_query.pqid = query.qid;
+        sub_query.qid = -1;
+
+        switch(op.type){
+        case HyperQuery::PatternType::E2V:
+        {
+            // multi-const-to-unknown: pick related node by const
+            // multi-known-to-unknown: generate sub-query for all node
+            std::vector<bool> hit_server(Global::num_servers, false);
+            for (auto &&eid : op.input_eids)
+                hit_server[PARTITION(eid)] = true;
+            for (int i = 0; i < Global::num_servers; i++) {
+                if (!op.input_eids.empty() && !hit_server[i]) continue; // multi-const
+                sub_queries.push_back(std::make_pair(i, sub_query));
+            }
+            break;
         }
+        case HyperQuery::PatternType::V2E:
+        {
+            std::vector<bool> hit_server(Global::num_servers, false);
+            for (auto &&vid : op.input_vids)
+                hit_server[PARTITION(vid)] = true;
+            for (int i = 0; i < Global::num_servers; i++) {
+                if (!op.input_vids.empty() && !hit_server[i]) continue;
+                sub_queries.push_back(std::make_pair(i, sub_query));
+            }
+            break;
+        }
+        case HyperQuery::PatternType::V2V:
+            assert(false);
+            break;
+        case HyperQuery::PatternType::E2E_ITSCT:
+            assert(false);
+            break;
+        case HyperQuery::PatternType::E2E_CT:
+            assert(false);
+            break;
+        case HyperQuery::PatternType::E2E_IN:
+            assert(false);
+            break;
+        default:
+            assert(false);
+        }
+
+        logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "] "
+                        << sub_queries.size() << " sub queies for "
+                        << "Q(pqid=" << query.pqid << ", qid=" << query.qid
+                        << ", step=" << query.pattern_step << ")"
+                        << LOG_endl;
     }
 
     // determine fork-join or in-place execution
-    bool need_fork_join(HyperQuery &query, HyperQuery::Pattern& op) {
+    bool need_fork_join(HyperQuery &query) {
         // always need NOT fork-join when executing on single machine
         if (Global::num_servers == 1) return false;
 
-        // TODO-zyw:
+        HyperQuery::Result& res = query.result;
+        HyperQuery::Pattern& op = query.get_pattern();
+        switch(op.type){
+        case HyperQuery::PatternType::GE:
+        {
+            // single-const-to-known
+            int col = res.var2col(op.input_vars[0]);
+            return (col != NO_RESULT_COL);
+        }
+        case HyperQuery::PatternType::E2V:
+            // single-const-to-unknown or single-known-to-unknown
+            return ((op.input_eids.size() > 1 && op.input_vars.empty()) ||
+                    (op.input_vars.size() > 1 && op.input_eids.empty())) 
+                    && query.pstate == HyperQuery::HP_UNFORK;
+        case HyperQuery::PatternType::V2E:
+            // single-const-to-unknown or single-known-to-unknown
+            return ((op.input_vids.size() > 1 && op.input_vars.empty()) ||
+                    (op.input_vars.size() > 1 && op.input_vids.empty()))
+                    && query.pstate == HyperQuery::HP_UNFORK;
+        // case HyperQuery::PatternType::V2V:
+        // case HyperQuery::PatternType::E2E_ITSCT:
+        // case HyperQuery::PatternType::E2E_CT:
+        // case HyperQuery::PatternType::E2E_IN:
+        // case HyperQuery::PatternType::GV:
+        default:
+            assert(false);
+        }
+
         return false;
     }
 
     // deal with global op (Eg., V(), E())
-    bool dispatch(HyperQuery &query, HyperQuery::Pattern& op) {
+    bool dispatch(HyperQuery &query, bool is_start=true) {
         if (Global::num_servers * query.mt_factor == 1) return false;
 
-        // TODO-zyw:
+        // first pattern need dispatch, to all servers and multi-threads threads
+        HyperQuery::Pattern& op = query.get_pattern();
+        if (is_start && QUERY_FROM_PROXY(query) && query.pattern_step == 0 && query.start_from_index() ) { 
+            logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "] dispatch "
+                                 << "Q(qid=" << query.qid << ", pqid=" << query.pqid
+                                 << ", step=" << query.pattern_step << ")" << LOG_endl;
+            rmap.put_parent_request(query, Global::num_servers * query.mt_factor);
+
+            HyperQuery sub_query = query;
+            for (int i = 0; i < Global::num_servers; i++) {
+                for (int j = 0; j < query.mt_factor; j++) {
+                    sub_query.pqid = query.qid;
+                    sub_query.qid = -1;
+                    sub_query.mt_tid = j;
+
+                    int dst_tid = Global::num_proxies
+                                  + (tid + j + 1 - Global::num_proxies) % Global::num_engines;
+
+                    Bundle bundle(sub_query);
+                    msgr->send_msg(bundle, i, dst_tid);
+                }
+            }
+            return true;
+        } 
+
         return false;
     }
 
-    void execute_one_op(HyperQuery& query, HyperQuery::Pattern& op) {
+    void execute_one_op(HyperQuery& query) {
+        HyperQuery::Pattern& op = query.get_pattern();
         switch(op.type){
         case HyperQuery::PatternType::GV:
             op_get_vertices(query, op);
@@ -1011,30 +1113,28 @@ private:
         uint64_t start, end;
         logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "] execute ops of "
                              << "Q(pqid=" << query.pqid << ", qid=" << query.qid
-                             << ", step=" << query.pattern_step << ")"
+                             << ", step=" << query.pattern_step
+                             << ", state=" << query.state << ")"
                              << " #cols = " << query.result.get_col_num()
                              << " #rows = " << query.result.get_row_num()
                              << LOG_endl;
         do {
-            HyperQuery::Pattern& op = query.get_pattern();
-
-            if (need_fork_join(query, op)) {
-                std::vector<HyperQuery> sub_queries = generate_sub_query(query, op);
+            if (need_fork_join(query)) {
+                std::vector<std::pair<int, HyperQuery>> sub_queries;
+                generate_sub_query(query, sub_queries);
                 rmap.put_parent_request(query, sub_queries.size());
                 for (int i = 0; i < sub_queries.size(); i++) {
-                    Bundle bundle(sub_queries[i]);
-                    msgr->send_msg(bundle, i, tid);
+                    // TODO: pick a random dst engine
+                    int dst_tid = tid;
+                    // int dst_tid = coder->get_random() % Global::num_engines + Global::num_proxies;
+                    Bundle bundle(sub_queries[i].second);
+                    msgr->send_msg(bundle, sub_queries[i].first, dst_tid);
                 }
                 return false; // outstanding
             }
 
-            // exploit parallelism (multi-server and multi-threading)
-            if (dispatch(query, op)) {
-                return false;
-            }
-
             start = timer::get_usec();
-            execute_one_op(query, op);
+            execute_one_op(query);
             end = timer::get_usec();
             query.result.step_latency.push_back(end - start);
             logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "]"
@@ -1042,6 +1142,8 @@ private:
                                  << " exec-time = " << (end - start) << " usec"
                                  << " #cols = " << query.result.get_col_num()
                                  << " #rows = " << query.result.get_row_num()
+                                 << " #v2e = " << query.result.v2e_middle_map.size()
+                                 << " #e2v = " << query.result.e2v_middle_map.size()
                                  << LOG_endl;
 
             // print step result
@@ -1049,6 +1151,16 @@ private:
             //             << query.result.get_row_num() << " row, "
             //             << query.result.get_col_num() << " col" 
             //             << LOG_endl;
+
+            if (query.pstate == HyperQuery::HP_STEP1) {
+                query.pstate = HyperQuery::HP_STEP2;
+                query.state = HyperQuery::SQ_REPLY;
+                Bundle bundle(query);
+                msgr->send_msg(bundle, coder->sid_of(query.pqid), coder->tid_of(query.pqid));
+                return false;
+            } else if (query.pstate == HyperQuery::HP_STEP2) {
+                query.pstate = HyperQuery::HP_UNFORK;
+            }
 
             // if result row = 0 after one pattern, just skip the rest patterns
             if (query.result.get_row_num() == 0)
@@ -1072,6 +1184,18 @@ public:
     }
 
     void execute_hyper_query(HyperQuery &query) {
+        // static int count = 0;
+        // if (count++ > 100) exit(0);
+        logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "]"
+                        << " get HyperQuery"
+                        << "[ QID=" << query.qid 
+                        << " | PQID=" << query.pqid 
+                        << " | STATE=" << query.state 
+                        << " | STEP=" << query.pattern_step
+                        << " | PSTATE=" << query.pstate << " ]"
+                        << query.result.get_row_num() << " rows, " << query.result.get_col_num() << " cols."
+                        << LOG_endl;
+
         try {
             // encode the lineage of the query (server & thread)
             if (query.qid == -1) query.qid = coder->get_and_inc_qid();
@@ -1093,6 +1217,9 @@ public:
 
             // 1. not done, execute ops
             if (!query.done(HyperQuery::SQState::SQ_PATTERN)) {
+                // exploit parallelism (multi-server and multi-threading)
+                if (dispatch(query)) return;  // async waiting reply by rmap
+
                 if (!execute_ops(query)) return;  // outstanding
             }
 

@@ -73,6 +73,7 @@ private:
 
 public:
     enum SQState { SQ_PATTERN = 0, SQ_UNION, SQ_FILTER, SQ_OPTIONAL, SQ_FINAL, SQ_REPLY };
+    enum HPState { HP_UNFORK = 0, HP_STEP1, HP_STEP2};
     enum PatternType { GV, GE, GP, V2E, E2V, E2E_ITSCT, E2E_CT, E2E_IN, V2V, LAST_TYPE};
     enum ParamType { P_ETYPE, P_VTYPE, P_GE, P_LE, P_GT, P_LT, P_EQ, P_NE, NO_TYPE };
 
@@ -343,6 +344,10 @@ public:
         int attr_col_num = 0; // FIXME: why not no attr_row_num
         int status_code = SUCCESS;
 
+        // middle result of a pattern
+        std::map<sid_t, std::vector<heid_t>> v2e_middle_map;
+        std::map<heid_t, std::vector<sid_t>> e2v_middle_map;
+
         // data
         ResultTable<sid_t> vid_res_table;
         ResultTable<heid_t> heid_res_table;
@@ -562,12 +567,27 @@ public:
         }
 
         int get_status_code() { return status_code; }
+
+        void append_result(HyperQuery::Result &r) {
+            /// update metadata (i.e., v2c_map, ncols, attr_ncols, and nrows)
+            // NOTE: all sub-jobs have the same v2c_map, ncols, and attr_ncols
+            v2c_map = r.v2c_map;
+
+            // update date
+            vid_res_table.append_result(r.vid_res_table);
+            heid_res_table.append_result(r.heid_res_table);
+            float_res_table.append_result(r.float_res_table);
+            double_res_table.append_result(r.double_res_table);
+
+            update_nrows();
+        }
     };
 
     int qid = -1;   // query id (track engine (sid, tid))
     int pqid = -1;  // parent qid (track the source (proxy or parent query) of query)
 
     SQState state = SQ_PATTERN;
+    HPState pstate = HP_UNFORK;
 
     int priority = 0;
 
@@ -610,6 +630,7 @@ public:
 
     void advance_step() {
         this->pattern_step++;
+        this->pstate = HP_UNFORK;
     }
 
     int get_pattern_step() {
@@ -654,8 +675,8 @@ public:
          * ?X P0 ?Y .             // then from ?X's edge with P0
          *
          */
-        // TODO-zyw
-        return false;
+        const Pattern& start_pattern = pattern_group.patterns[0];
+        return (start_pattern.type == GE || start_pattern.type == GV);
     }
 
     void print_hyper_query() {
@@ -663,8 +684,9 @@ public:
                             << "[ QID=" << qid << " | PQID=" << pqid << " | MT_TID=" << mt_tid << " ]"
                             << LOG_endl;
         pattern_group.print_group();
-        /// TODO: print more fields
-        logstream(LOG_INFO) << LOG_endl;
+        logstream(LOG_INFO) << "Result"
+                            << "[ row =" << result.get_row_num() << " | col =" << result.get_col_num() << " ]"
+                            << LOG_endl;
     }
 
     void print_SQState() {
@@ -764,6 +786,8 @@ void save(Archive &ar, const wukong::HyperQuery::Result &t, unsigned int version
     ar << t.nvars;
     ar << t.required_vars;
     ar << t.v2c_map;
+    ar << t.v2e_middle_map;
+    ar << t.e2v_middle_map;
     ar << t.vid_res_table.col_num;
     ar << t.heid_res_table.col_num;
     ar << t.float_res_table.col_num;
@@ -793,6 +817,8 @@ void load(Archive & ar, wukong::HyperQuery::Result &t, unsigned int version) {
     ar >> t.nvars;
     ar >> t.required_vars;
     ar >> t.v2c_map;
+    ar >> t.v2e_middle_map;
+    ar >> t.e2v_middle_map;
     ar >> t.vid_res_table.col_num;
     ar >> t.heid_res_table.col_num;
     ar >> t.float_res_table.col_num;
@@ -816,6 +842,8 @@ template<class Archive>
 void save(Archive & ar, const wukong::HyperQuery &t, unsigned int version) {
     ar << t.qid;
     ar << t.pqid;
+    ar << t.state;
+    ar << t.pstate;
     ar << t.pattern_step;
     ar << t.pattern_group;
     ar << t.result;
@@ -825,6 +853,8 @@ template<class Archive>
 void load(Archive & ar, wukong::HyperQuery &t, unsigned int version) {
     ar >> t.qid;
     ar >> t.pqid;
+    ar >> t.state;
+    ar >> t.pstate;
     ar >> t.pattern_step;
     ar >> t.pattern_group;
     ar >> t.result;
