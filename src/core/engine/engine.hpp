@@ -78,6 +78,8 @@ private:
             RDFLoad r = bundle.get_rdf_load();
             rdf->execute_load_data(r);
 #endif
+        } else if (bundle.type == STR_MAP) {
+            merge_hyper_string(bundle);
         } else { // print error msg and just skip the request
             logstream(LOG_ERROR) << "Unsupported type of request." << LOG_endl;
         }
@@ -237,6 +239,29 @@ public:
                 snooze_interval *= snooze_interval < MAX_SNOOZE_TIME ? 2 : 1;
             }
         }
+    }
+
+    void share_hyper_string() {
+        // share all the local hid2str mapping to other servers
+        boost::unordered_map<heid_t, std::string> &ismap_he = str_server->ismap_he;
+        std::vector<std::pair<heid_t, std::string>> id2strList(ismap_he.size());
+        int cnt = 0;
+
+        for (auto &&iter : ismap_he)
+            id2strList[cnt++] = std::make_pair(iter.first, iter.second);
+        ASSERT_EQ(cnt, ismap_he.size());
+        
+        Bundle bundle(id2strList);
+        for (size_t i = 0; i < Global::num_servers; i++)
+            if (i != sid) msgr->send_msg(bundle, i, Global::num_proxies);
+
+        MPI_Barrier(MPI_COMM_WORLD);
+    }
+
+    void merge_hyper_string(Bundle& part) {
+        std::vector<std::pair<heid_t, std::string>> map = part.get_string_map();
+        logstream(LOG_DEBUG) << "#" << sid << " merge " << map.size() << " id2str pairs." << LOG_endl;
+        for (auto &&iter : map) str_server->add_he(iter.second, iter.first);
     }
 };
 
