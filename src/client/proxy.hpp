@@ -149,7 +149,7 @@ private:
         // NOTE: the partitioned mapping has better tail latency in batch mode
         int range = Global::num_engines / Global::num_proxies;
         // FIXME: BUG if Global::num_engines < Global::num_proxies
-        ASSERT(range > 0);
+        ASSERT_GT(range, 0);
 
         int base = Global::num_proxies + (range * tid);
         // randomly choose engine without preferred one
@@ -251,7 +251,8 @@ public:
         Bundle bundle = adaptor->recv();
         ASSERT(bundle.type == HYPER_QUERY);
         HyperQuery r = bundle.get_hyper_query();
-        logstream(LOG_DEBUG) << "Proxy recv_reply: got reply qid=" << r.qid << ", r.pqid=" << r.pqid
+        logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "]"
+                             << "Proxy recv_reply: got reply qid=" << r.qid << ", r.pqid=" << r.pqid
                              << ", #rows=" << r.result.get_row_num() << ", step=" << r.pattern_step
                              << ", done: " << r.done(HyperQuery::SQState::SQ_PATTERN) << LOG_endl;
         return r;
