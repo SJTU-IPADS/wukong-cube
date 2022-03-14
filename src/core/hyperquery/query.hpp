@@ -73,7 +73,7 @@ private:
 
 public:
     enum SQState { SQ_PATTERN = 0, SQ_UNION, SQ_FILTER, SQ_OPTIONAL, SQ_FINAL, SQ_REPLY };
-    enum HPState { HP_UNFORK = 0, HP_STEP1, HP_STEP2};
+    enum HPState { HP_STEP_GET = 0, HP_STEP_MATCH};
     enum PatternType { GV, GE, GP, V2E, E2V, E2E_ITSCT, E2E_CT, E2E_IN, V2V, LAST_TYPE};
     enum ParamType { P_ETYPE, P_VTYPE, P_GE, P_LE, P_GT, P_LT, P_EQ, P_NE, NO_TYPE };
 
@@ -587,7 +587,7 @@ public:
     int pqid = -1;  // parent qid (track the source (proxy or parent query) of query)
 
     SQState state = SQ_PATTERN;
-    HPState pstate = HP_UNFORK;
+    HPState pstate = HP_STEP_GET;
 
     int priority = 0;
 
@@ -596,7 +596,8 @@ public:
 
     // Pattern
     int pattern_step = 0;
-    ssid_t local_var = 0;   // the local variable
+    bool forked = false;    //deciding fork or not
+    // ssid_t local_var = 0;   // the local variable
 
     int limit = -1;
     unsigned offset = 0;
@@ -630,7 +631,8 @@ public:
 
     void advance_step() {
         this->pattern_step++;
-        this->pstate = HP_UNFORK;
+        this->pstate = HP_STEP_GET;
+        this->forked = false;
     }
 
     int get_pattern_step() {
@@ -844,6 +846,7 @@ void save(Archive & ar, const wukong::HyperQuery &t, unsigned int version) {
     ar << t.pqid;
     ar << t.state;
     ar << t.pstate;
+    ar << t.forked;
     ar << t.pattern_step;
     ar << t.pattern_group;
     ar << t.result;
@@ -855,6 +858,7 @@ void load(Archive & ar, wukong::HyperQuery &t, unsigned int version) {
     ar >> t.pqid;
     ar >> t.state;
     ar >> t.pstate;
+    ar >> t.forked;
     ar >> t.pattern_step;
     ar >> t.pattern_group;
     ar >> t.result;

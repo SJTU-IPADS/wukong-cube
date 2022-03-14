@@ -204,6 +204,7 @@ private:
 
             for(int i = 0; i < nrows; i++) {
                 heid_t cur = res.get_row_col_he(i, col);
+                if (PARTITION(cur) != sid) continue;
 
                 if (cur != cached) { // new KNOWN
                     cached = cur;
@@ -285,7 +286,7 @@ private:
 
             // update result data
             res.load_data(updated_result);
-        } else if (state == HyperQuery::HP_STEP1) {
+        } else if (state == HyperQuery::HP_STEP_GET) {
             // do the first step: get as many hyperedges from local kv as possible
 
             // get hyperedges by const eid
@@ -306,8 +307,11 @@ private:
                     e2v_middle_map[cur] = std::vector<sid_t>(vids, vids + vid_sz);
                 }
             }
+            
+            // set pstate
+            state = HyperQuery::HP_STEP_MATCH;
             return;
-        } else if (state == HyperQuery::HP_STEP2) {
+        } else if (state == HyperQuery::HP_STEP_MATCH) {
             // do the second step: intersect all hids sets from different nodes
 
             // match hyperedges from const eid
@@ -430,7 +434,7 @@ private:
 
             // update result data
             res.load_data(updated_result);
-        } else if (state == HyperQuery::HP_STEP1) {
+        } else if (state == HyperQuery::HP_STEP_GET) {
             // do the first step: get as many hyperedges from local kv as possible
 
             // get hyperedges by const eid
@@ -451,8 +455,11 @@ private:
                     v2e_middle_map[cur] = std::vector<heid_t>(eids, eids + eid_sz);
                 }
             }
+            
+            // set pstate
+            state = HyperQuery::HP_STEP_MATCH;
             return;
-        } else if (state == HyperQuery::HP_STEP2) {
+        } else if (state == HyperQuery::HP_STEP_MATCH) {
             // do the second step: intersect all hids sets from different nodes
 
             // match hyperedges from const eid
@@ -950,39 +957,65 @@ private:
         query.advance_step();
     }
 
+    // generate sub requests for certain servers
+    // return pairs of (dst_sid, sub_query)
     void generate_sub_query(HyperQuery &query, std::vector<std::pair<int, HyperQuery>>& sub_queries) {
-        // generate sub requests for certain servers
-        // return pairs of (dst_sid, sub_query)
+        // check pstate
+        ASSERT_EQ(query.pstate, HyperQuery::HP_STEP_GET);
+        
         HyperQuery::Pattern& op = query.get_pattern();
         sub_queries.reserve(Global::num_servers);
-        
         HyperQuery sub_query = query;
-        sub_query.pstate = HyperQuery::HP_STEP1;
+        sub_query.forked = true;
         sub_query.pqid = query.qid;
         sub_query.qid = -1;
 
         switch(op.type){
+        case HyperQuery::PatternType::GE:
+        {
+            // single-const-to-known: generate sub-query for all node
+            for (int i = 0; i < Global::num_servers; i++)
+                sub_queries.push_back(std::make_pair(i, sub_query));
+        }
         case HyperQuery::PatternType::E2V:
         {
             // multi-const-to-unknown: pick related node by const
+            // single-known-to-unknown: generate sub-query for all node
             // multi-known-to-unknown: generate sub-query for all node
-            std::vector<bool> hit_server(Global::num_servers, false);
-            for (auto &&eid : op.input_eids)
-                hit_server[PARTITION(eid)] = true;
-            for (int i = 0; i < Global::num_servers; i++) {
-                if (!op.input_eids.empty() && !hit_server[i]) continue; // multi-const
-                sub_queries.push_back(std::make_pair(i, sub_query));
+            // const+known-to-unknown: generate sub-query for all node
+
+            if (op.input_vars.empty()) {
+                // multi-const-to-unknown: pick related node by const
+                std::vector<bool> hit_server(Global::num_servers, false);
+                for (auto &&eid : op.input_eids) hit_server[PARTITION(eid)] = true;
+                for (int i = 0; i < Global::num_servers; i++)
+                    if (hit_server[i]) sub_queries.push_back(std::make_pair(i, sub_query));
+            } 
+            // else: generate sub-query for all node
+            else {
+                for (int i = 0; i < Global::num_servers; i++)
+                    sub_queries.push_back(std::make_pair(i, sub_query));
             }
             break;
         }
         case HyperQuery::PatternType::V2E:
         {
-            std::vector<bool> hit_server(Global::num_servers, false);
-            for (auto &&vid : op.input_vids)
-                hit_server[PARTITION(vid)] = true;
-            for (int i = 0; i < Global::num_servers; i++) {
-                if (!op.input_vids.empty() && !hit_server[i]) continue;
-                sub_queries.push_back(std::make_pair(i, sub_query));
+            // multi-const-to-unknown: pick related node by const
+            // single-known-to-unknown: generate sub-query for all node
+            // multi-known-to-unknown: generate sub-query for all node
+            // const+known-to-unknown: generate sub-query for all node
+
+            if (op.input_vars.empty()) {
+                // multi-const-to-unknown: pick related node by const
+                std::vector<bool> hit_server(Global::num_servers, false);
+                for (auto &&eid : op.input_vids) hit_server[PARTITION(eid)] = true;
+                for (int i = 0; i < Global::num_servers; i++)
+                    if (hit_server[i]) sub_queries.push_back(std::make_pair(i, sub_query));
+            }
+            // else: generate sub-query for all node
+            else {
+                for (int i = 0; i < Global::num_servers; i++)
+                    sub_queries.push_back(std::make_pair(i, sub_query));
             }
             break;
         }
@@ -1012,7 +1045,7 @@ private:
     // determine fork-join or in-place execution
     bool need_fork_join(HyperQuery &query) {
         // always need NOT fork-join when executing on single machine
-        if (Global::num_servers == 1) return false;
+        if (Global::num_servers == 1 || query.forked || query.pstate == HyperQuery::HP_STEP_MATCH) return false;
 
         HyperQuery::Result& res = query.result;
         HyperQuery::Pattern& op = query.get_pattern();
@@ -1024,15 +1057,11 @@ private:
             return (col != NO_RESULT_COL);
         }
         case HyperQuery::PatternType::E2V:
-            // single-const-to-unknown or single-known-to-unknown
-            return ((op.input_eids.size() > 1 && op.input_vars.empty()) ||
-                    (op.input_vars.size() > 1 && op.input_eids.empty())) 
-                    && query.pstate == HyperQuery::HP_UNFORK;
+            // not single-const-to-unknown
+            return !(op.input_eids.size() == 1 && op.input_vars.empty());
         case HyperQuery::PatternType::V2E:
-            // single-const-to-unknown or single-known-to-unknown
-            return ((op.input_vids.size() > 1 && op.input_vars.empty()) ||
-                    (op.input_vars.size() > 1 && op.input_vids.empty()))
-                    && query.pstate == HyperQuery::HP_UNFORK;
+            // not single-const-to-unknown
+            return !(op.input_vids.size() == 1 && op.input_vars.empty());
         // case HyperQuery::PatternType::V2V:
         // case HyperQuery::PatternType::E2E_ITSCT:
         // case HyperQuery::PatternType::E2E_CT:
@@ -1142,8 +1171,8 @@ private:
                                  << " exec-time = " << (end - start) << " usec"
                                  << " #cols = " << query.result.get_col_num()
                                  << " #rows = " << query.result.get_row_num()
-                                 << " #v2e = " << query.result.v2e_middle_map.size()
                                  << " #e2v = " << query.result.e2v_middle_map.size()
+                                 << " #v2e = " << query.result.v2e_middle_map.size()
                                  << LOG_endl;
 
             // print step result
@@ -1152,14 +1181,11 @@ private:
             //             << query.result.get_col_num() << " col" 
             //             << LOG_endl;
 
-            if (query.pstate == HyperQuery::HP_STEP1) {
-                query.pstate = HyperQuery::HP_STEP2;
+            if (query.pstate == HyperQuery::HP_STEP_MATCH) {
                 query.state = HyperQuery::SQ_REPLY;
                 Bundle bundle(query);
                 msgr->send_msg(bundle, coder->sid_of(query.pqid), coder->tid_of(query.pqid));
                 return false;
-            } else if (query.pstate == HyperQuery::HP_STEP2) {
-                query.pstate = HyperQuery::HP_UNFORK;
             }
 
             // if result row = 0 after one pattern, just skip the rest patterns
