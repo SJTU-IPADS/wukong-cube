@@ -67,9 +67,14 @@ public:
                 ++it;
     }
 
-    bool send_msg(Bundle &bundle, int dst_sid, int dst_tid) {
-        logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "] sending msg to "
-                            << "[" << dst_sid << "-" << dst_tid << "]" << LOG_endl;
+    bool send_msg(Bundle &bundle, int dst_sid, int dst_tid, bool reply = false) {
+        if (reply)
+            logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "] sending reply msg to "
+                                << "[" << dst_sid << "-" << dst_tid << "]" << LOG_endl;
+        else 
+            logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "] sending subq msg to "
+                                << "[" << dst_sid << "-" << dst_tid << "]" << LOG_endl;
+
         if (adaptor->send(dst_sid, dst_tid, bundle))
             return true;
 

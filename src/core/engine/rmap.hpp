@@ -157,16 +157,25 @@ public:
         HyperQuery::Result &part = r.result;
         d.cnt--;
 
-        whole.append_result(part);
-        whole.e2v_middle_map.insert(part.e2v_middle_map.begin(), part.e2v_middle_map.end());
-        whole.v2e_middle_map.insert(part.v2e_middle_map.begin(), part.v2e_middle_map.end());
+        // put part meta
         d.parent.pstate = r.pstate;
         d.parent.pattern_step = r.pattern_step;
+        
+        // put part data 
+        if (r.pstate == HyperQuery::HP_STEP_GET) {
+            d.parent.result.v2c_map = r.result.v2c_map;
+            whole.append_result(part);
+        } else {
+            whole.candidates.insert(whole.candidates.end(), part.candidates.begin(), part.candidates.end());
+            whole.e2v_middle_map.insert(part.e2v_middle_map.begin(), part.e2v_middle_map.end());
+            whole.v2e_middle_map.insert(part.v2e_middle_map.begin(), part.v2e_middle_map.end());
+        }
         logstream(LOG_DEBUG) << "put parent-qid=" << r.pqid
                              << " and #sub-qid=" << r.qid
                              << ", cnt = " << d.cnt 
                              << ", e2v_middle = " << whole.e2v_middle_map.size()
                              << ", v2e_middle = " << whole.v2e_middle_map.size()
+                             << ", candidates = " << whole.candidates.size()
                              << LOG_endl;
     }
 
@@ -178,21 +187,23 @@ public:
         HyperQuery r = internal_map[qid].parent;
         HyperQuery &reply = internal_map[qid].reply;
 
-        // copy metadata of result
-        // NOTE: no need to set nvars, required_vars, and blind
-        r.result.v2c_map = reply.result.v2c_map;
-        r.result.vid_res_table.col_num = reply.result.vid_res_table.col_num;
-        r.result.heid_res_table.col_num = reply.result.heid_res_table.col_num;
-        r.result.float_res_table.col_num = reply.result.float_res_table.col_num;
-        r.result.double_res_table.col_num = reply.result.double_res_table.col_num;
+        if (r.pstate == HyperQuery::HP_STEP_GET) {
+            // NOTE: no need to set nvars, required_vars, and blind
+            // r.result.v2c_map = reply.result.v2c_map;
+            r.result.vid_res_table.col_num = reply.result.vid_res_table.col_num;
+            r.result.heid_res_table.col_num = reply.result.heid_res_table.col_num;
+            r.result.float_res_table.col_num = reply.result.float_res_table.col_num;
+            r.result.double_res_table.col_num = reply.result.double_res_table.col_num;
 
-        // copy data of middle result
-        r.result.e2v_middle_map.swap(reply.result.e2v_middle_map);
-        r.result.v2e_middle_map.swap(reply.result.v2e_middle_map);
-
-        // copy data of result
-        r.result.load_data(reply.result);
-        r.result.update_nrows();
+            // copy data of result
+            r.result.load_data(reply.result);
+            r.result.update_nrows();
+        } else {
+            // copy data of middle result
+            r.result.e2v_middle_map.swap(reply.result.e2v_middle_map);
+            r.result.v2e_middle_map.swap(reply.result.v2e_middle_map);
+            r.result.candidates.swap(reply.result.candidates);
+        }        
 
         internal_map.erase(qid);
         logstream(LOG_DEBUG) << "erase parent-qid=" << qid << LOG_endl;

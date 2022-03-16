@@ -347,6 +347,7 @@ public:
         // middle result of a pattern
         std::map<sid_t, std::vector<heid_t>> v2e_middle_map;
         std::map<heid_t, std::vector<sid_t>> e2v_middle_map;
+        std::vector<uint64_t> candidates;   // for e2e and v2v
 
         // data
         ResultTable<sid_t> vid_res_table;
@@ -633,6 +634,9 @@ public:
         this->pattern_step++;
         this->pstate = HP_STEP_GET;
         this->forked = false;
+
+        // clear middle result
+        result.candidates.clear();
     }
 
     int get_pattern_step() {
@@ -790,6 +794,7 @@ void save(Archive &ar, const wukong::HyperQuery::Result &t, unsigned int version
     ar << t.v2c_map;
     ar << t.v2e_middle_map;
     ar << t.e2v_middle_map;
+    ar << t.candidates;
     ar << t.vid_res_table.col_num;
     ar << t.heid_res_table.col_num;
     ar << t.float_res_table.col_num;
@@ -821,6 +826,7 @@ void load(Archive & ar, wukong::HyperQuery::Result &t, unsigned int version) {
     ar >> t.v2c_map;
     ar >> t.v2e_middle_map;
     ar >> t.e2v_middle_map;
+    ar >> t.candidates;
     ar >> t.vid_res_table.col_num;
     ar >> t.heid_res_table.col_num;
     ar >> t.float_res_table.col_num;
