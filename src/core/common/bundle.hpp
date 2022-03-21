@@ -41,7 +41,7 @@
 
 namespace wukong {
 
-enum req_type { SPARQL_QUERY = 0, DYNAMIC_LOAD = 1, GSTORE_CHECK = 2, SPARQL_HISTORY = 3, HYPER_QUERY = 4, STR_MAP };
+enum req_type { SPARQL_QUERY = 0, DYNAMIC_LOAD = 1, GSTORE_CHECK = 2, SPARQL_HISTORY = 3, HYPER_QUERY = 4 };
 
 /**
  * Bundle to be sent by network, with data type labeled
@@ -95,14 +95,6 @@ public:
         boost::archive::binary_oarchive oa(ss);
 
         oa << r;
-        data = ss.str();
-    }
-
-    Bundle(const std::vector<std::pair<heid_t, std::string>> map): type(STR_MAP) {
-        std::stringstream ss;
-        boost::archive::binary_oarchive oa(ss);
-
-        oa << map;
         data = ss.str();
     }
 
@@ -161,18 +153,6 @@ public:
 
         boost::archive::binary_iarchive ia(ss);
         GStoreCheck result;
-        ia >> result;
-        return result;
-    }
-
-    std::vector<std::pair<heid_t, std::string>> get_string_map() const {
-        ASSERT(type == STR_MAP);
-
-        std::stringstream ss;
-        ss << data;
-
-        boost::archive::binary_iarchive ia(ss);
-        std::vector<std::pair<heid_t, std::string>> result;
         ia >> result;
         return result;
     }

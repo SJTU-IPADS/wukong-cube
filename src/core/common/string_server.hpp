@@ -50,7 +50,6 @@
 namespace wukong {
 
 class StringServer {
-friend class Engine;
 private:
 #ifdef USE_BITRIE
     bitrie<char, sid_t> bimap;  // ID-STRING (bi-)map

@@ -256,9 +256,6 @@ main(int argc, char *argv[])
                            (void *)wukong::engines[tid - wukong::Global::num_proxies]);
     }
 
-    // after launch all the engines, exchange string for hyperedge
-    wukong::engines[0]->share_hyper_string();
-
 #ifdef USE_GPU
     logstream(LOG_INFO) << "#" << sid
                         << " #threads:" << wukong::Global::num_threads
