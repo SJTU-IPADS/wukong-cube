@@ -288,8 +288,11 @@ protected:
                 this->v2estore->values[off++] = v2etriples[i].eid;
             }
 
-            // TODO: build index
-            // collect_idx_info(this->v2estore->slots[slot_id]);
+            // hyperege-vertex-index
+            tbb_hv_hash_map::accessor a;
+            hv_map.insert(a, v2etriples[s].edge_type);
+            a->second.insert(v2etriples[s].vid);
+
             s = e;
         }
     }
@@ -318,12 +321,6 @@ protected:
             tbb_ht_hash_map::accessor aht;
             ht_map.insert(aht, edge.id);
             aht->second.insert(edge.edge_type);
-
-            // hyperege-vertex-index
-            tbb_hv_hash_map::accessor ahv;
-            hv_map.insert(ahv, edge.edge_type);
-            for (auto const& vid : edge.vertices)
-                ahv->second.insert(vid);
         }
     }
 
