@@ -767,8 +767,12 @@ protected:
                             << "for aggregrating str2id mappings" << LOG_endl;
 
         // add local hyperedge name mapping into str_server
+        start = timer::get_usec();
         for (auto &&pair : id2str) str_server->add_he(pair.second, pair.first);
         id2str.clear();
+        end = timer::get_usec();
+        logstream(LOG_INFO) << "[HyperLoader] #" << sid << ": " << (end - start) / 1000 << " ms "
+                            << "for inserting local str2id mappings" << LOG_endl;
     }
 
 public:
