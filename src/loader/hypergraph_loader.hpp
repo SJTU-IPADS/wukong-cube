@@ -266,7 +266,8 @@ protected:
 
         auto lambda = [&](std::istream& file, uint64_t &index_start, int localtid) {
             HyperEdge edge;
-            int num_ids, vid;
+            int num_ids;
+            sid_t vid;
             char line[100], c;
             std::string name;
 
@@ -277,6 +278,11 @@ protected:
                 file.get(c);
                 ASSERT_EQ(c, '|');
 
+                // skip empty hyperedge
+                file >> std::ws;
+                c = file.peek();
+                if (c == '|') goto done_reading_vids;
+
                 // read vids
                 edge.vertices.clear();
                 do {
@@ -286,6 +292,7 @@ protected:
                     c = file.peek();
                 } while (c != '|');
             
+            done_reading_vids:
                 // skip delimer
                 file.get(c);
                 ASSERT_EQ(c, '|');
