@@ -174,7 +174,7 @@ protected:
     void send_hyperedge(int tid, int dst_sid, HyperEdge& edge) {
         // the RDMA buffer is first split into #threads partitions
         // each partition is further split into #servers pieces
-        // each piece: #hyperedges, triple, triple, . . .
+        // each piece: #cnt, hyperedge, hyperedge, hyperedge, . . .
         uint64_t lbuf_partition_sz = floor(loader_mem.local_buf_sz / Global::num_servers - sizeof(uint64_t), sizeof(sid_t));
         uint64_t* pn = reinterpret_cast<uint64_t*>((loader_mem.local_buf + loader_mem.local_buf_sz * tid) + (lbuf_partition_sz + sizeof(uint64_t)) * dst_sid);
         sid_t* lbuf_partition = reinterpret_cast<sid_t*>(pn + 1);
@@ -205,7 +205,7 @@ protected:
     void send_v2e(int tid, int dst_sid, V2ETriple& triple) {
         // the RDMA buffer is first split into #threads partitions
         // each partition is further split into #servers pieces
-        // each piece: #hyperedges, tirple, triple, . . .
+        // each piece: #cnt, v2etriple, v2etriple, v2etriple, . . .
         uint64_t lbuf_partition_sz = floor(loader_mem.local_buf_sz / Global::num_servers - sizeof(uint64_t), sizeof(V2ETriple));
         uint64_t* pn = reinterpret_cast<uint64_t*>((loader_mem.local_buf + loader_mem.local_buf_sz * tid) + (lbuf_partition_sz + sizeof(uint64_t)) * dst_sid);
         V2ETriple* lbuf_partition = reinterpret_cast<V2ETriple*>(pn + 1);
@@ -224,6 +224,38 @@ protected:
         // buffer the hyperedge and update the counter
         lbuf_partition[n] = triple;
         *pn = (n + 1);
+    }
+
+    // send_str2id can be safely called by multiple threads,
+    // since the buffer is exclusively used by one thread.
+    void send_str2id(int tid, int dst_sid, heid_t eid, std::string& str) {
+        // the RDMA buffer is first split into #threads partitions
+        // each partition is further split into #servers pieces
+        // each piece: #cnt, str2id, str2id, str2id, . . .
+        uint64_t lbuf_partition_sz = floor(loader_mem.local_buf_sz / Global::num_servers - sizeof(uint64_t), sizeof(char));
+        uint64_t* pn = reinterpret_cast<uint64_t*>((loader_mem.local_buf + loader_mem.local_buf_sz * tid) + (lbuf_partition_sz + sizeof(uint64_t)) * dst_sid);
+        char* lbuf_partition = reinterpret_cast<char*>(pn + 1);
+
+        // the 1st entry of buffer records #hyperedges (suppose the )
+        uint64_t n = *pn;
+
+        // flush buffer if there is no enough space to buffer a new triple
+        uint64_t str_sz = str.size();
+        uint64_t cur_sz = (n + str_sz) * sizeof(char) + sizeof(uint64_t) + sizeof(heid_t);
+        if (cur_sz > lbuf_partition_sz) {
+            flush_data<char>(tid, dst_sid);
+            n = *pn;  // reset, it should be 0
+            ASSERT(n == 0);
+        }
+
+        // buffer the hyperedge and update the counter
+        heid_t* eid_offset = reinterpret_cast<heid_t*>(lbuf_partition + n);
+        uint64_t* str_sz_offset = reinterpret_cast<uint64_t*>(eid_offset + 1);
+        char* str_offset = reinterpret_cast<char*>(str_sz_offset + 1);
+        eid_offset[0] = eid;
+        str_sz_offset[0] = str_sz;
+        memcpy(str_offset, str.data(), str_sz);
+        *pn = n + str_sz + (sizeof(uint64_t) + sizeof(heid_t)) / sizeof(char);
     }
 
     int read_partial_exchange(std::map<sid_t, HyperEdgeModel>& edge_models, 
@@ -357,6 +389,55 @@ protected:
             lbuf_partition[0] = num_datas[s];
 
             uint64_t gbuf_partition_sz = floor(loader_mem.global_buf_sz / Global::num_servers - sizeof(uint64_t), sizeof(V2ETriple));
+            uint64_t offset = (gbuf_partition_sz + sizeof(uint64_t)) * sid;
+            if (s != sid) {
+                RDMA& rdma = RDMA::get_rdma();
+                rdma.dev->RdmaWrite(0, s, reinterpret_cast<char*>(lbuf_partition), sizeof(uint64_t), offset);
+            } else {
+                memcpy(loader_mem.global_buf + offset, reinterpret_cast<char*>(lbuf_partition), sizeof(uint64_t));
+            }
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        return Global::num_servers;
+    }
+
+    int exchange_str2id_mappings() {
+        // init #cnt
+        for (int s = 0; s < Global::num_servers; s++) {
+            for (int t = 0; t < Global::num_engines; t++) {
+                uint64_t lbuf_partition_sz = floor(loader_mem.local_buf_sz / Global::num_servers - sizeof(uint64_t), sizeof(char));
+                uint64_t* pn = reinterpret_cast<uint64_t*>((loader_mem.local_buf + loader_mem.local_buf_sz * t) + (lbuf_partition_sz + sizeof(uint64_t)) * s);
+                *pn = 0;
+            }
+        }
+
+        // send str2id pairs to each buffer
+        int cnt = 0;
+        uint64_t total_mem = 0;
+        for(auto &&id2str_pair: id2str) {
+            int localtid = (cnt++) % Global::num_engines;
+            total_mem += id2str_pair.second.size() + 16;
+            for (int s = 0; s < Global::num_servers; s++) {
+                if (s == sid) continue;
+                send_str2id(localtid, s, id2str_pair.first, id2str_pair.second);
+            }
+        }
+
+        // flush the rest str2id within each RDMA buffer
+        for (int s = 0; s < Global::num_servers; s++) {
+            if (s == sid) continue;
+            for (int t = 0; t < Global::num_engines; t++)
+                flush_data<char>(t, s);
+        }
+
+        // exchange #size among all servers
+        for (int s = 0; s < Global::num_servers; s++) {
+            if (s == sid) continue;
+            uint64_t* lbuf_partition = reinterpret_cast<uint64_t*>(loader_mem.local_buf);
+            lbuf_partition[0] = num_datas[s];
+
+            uint64_t gbuf_partition_sz = floor(loader_mem.global_buf_sz / Global::num_servers - sizeof(uint64_t), sizeof(char));
             uint64_t offset = (gbuf_partition_sz + sizeof(uint64_t)) * sid;
             if (s != sid) {
                 RDMA& rdma = RDMA::get_rdma();
@@ -561,11 +642,51 @@ protected:
         }
     }
 
+    void aggregate_str2id_mappings(int num_partitions, StringServer *str_server) {
+        // calculate #hyperedges on the kvstore from all servers
+        uint64_t total = 0;
+        uint64_t gbuf_partition_sz = floor(loader_mem.global_buf_sz / num_partitions - sizeof(uint64_t), sizeof(char));
+        for (int i = 0; i < num_partitions; i++) {
+            if (i == sid) continue;
+            uint64_t* pn = reinterpret_cast<uint64_t*>(loader_mem.global_buf + (gbuf_partition_sz + sizeof(uint64_t)) * i);
+            total += *pn;  // the 1st uint64_t of kvs records #hyperedges
+        }
+
+        // each thread will scan all str2id pair (from all servers) and load into string server.
+        for (int id = 0; id < num_partitions; id++) {
+            if (id == sid) continue;
+            uint64_t* pn = reinterpret_cast<uint64_t*>(loader_mem.global_buf + (gbuf_partition_sz + sizeof(uint64_t)) * id);
+            char* str2ids = reinterpret_cast<char*>(pn + 1);
+
+            // the 1st uint64_t of kvs records #hyperedges
+            uint64_t n = *pn;
+            int i = 0;
+            while(i < n) {
+                heid_t* eid_offset = reinterpret_cast<heid_t*>(str2ids + i);
+                uint64_t* str_sz_offset = reinterpret_cast<uint64_t*>(eid_offset + 1);
+                char* str_offset = reinterpret_cast<char*>(str_sz_offset + 1);
+                heid_t eid = eid_offset[0];
+                std::string str(str_offset, str_sz_offset[0]);
+
+                // load into string server
+                str_server->add_he(str, eid);
+
+                // update iterator
+                i += (str_sz_offset[0] + sizeof(uint64_t) + sizeof(heid_t));
+            }
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
+    }
+
     // Load normal hyperedges from all files, using read_partial_exchange or read_all_files.
     void load_hyperedges_from_all(std::vector<std::string>& dfiles,
                                std::map<sid_t, HyperEdgeModel>& edge_models,
                                std::vector<std::vector<HyperEdge>>& edges,
-                               std::vector<std::vector<V2ETriple>>& v2etriples) {
+                               std::vector<std::vector<V2ETriple>>& v2etriples,
+                               StringServer *str_server) {
+        // clear
+        id2str.clear();
+
         // read_partial_exchange: load partial input files by each server and exchanges hyperedges
         //            according to graph partitioning
         // read_all_files: load all files by each server and select hyperedges
@@ -597,9 +718,7 @@ protected:
                             << "for aggregrating hyperedges" << LOG_endl;
 
         // refresh num_datas
-        for(int i = 0; i < num_datas.size(); i++) {
-            num_datas[i] = 0;
-        }
+        for(int i = 0; i < num_datas.size(); i++) num_datas[i] = 0;
     
         // Wukong generate a globally unique id for each hyperedge
         // now we need to send all (vid, heid) triples to each machine
@@ -618,6 +737,31 @@ protected:
         end = timer::get_usec();
         logstream(LOG_INFO) << "[HyperLoader] #" << sid << ": " << (end - start) / 1000 << " ms "
                             << "for aggregrating v2e triples" << LOG_endl;
+        
+        // refresh num_datas
+        for(int i = 0; i < num_datas.size(); i++) num_datas[i] = 0;
+
+        // Wukong generate a globally unique id for each hyperedge
+        // now we need to send all local (string, heid) pairs to each other machine
+        start = timer::get_usec();
+        num_partitons = exchange_str2id_mappings();
+        end = timer::get_usec();
+        logstream(LOG_INFO) << "[HyperLoader] #" << sid << ": " << (end - start) / 1000 << " ms "
+                            << "for exchange str2id mappings" << LOG_endl;
+        
+        // all str2id mappings are partitioned and temporarily stored in the kvstore on each server.
+        // the kvstore is split into num_partitions partitions, each contains #cnt and str2id pairs
+        //
+        // Wukong aggregates all str2id pairs and inserting them to string server
+        start = timer::get_usec();
+        aggregate_str2id_mappings(num_partitons, str_server);
+        end = timer::get_usec();
+        logstream(LOG_INFO) << "[HyperLoader] #" << sid << ": " << (end - start) / 1000 << " ms "
+                            << "for aggregrating str2id mappings" << LOG_endl;
+
+        // add local hyperedge name mapping into str_server
+        for (auto &&pair : id2str) str_server->add_he(pair.second, pair.first);
+        id2str.clear();
     }
 
 public:
@@ -652,11 +796,7 @@ public:
                                 << src << ") at server " << sid << LOG_endl;
         }
 
-        load_hyperedges_from_all(dfiles, edge_models, edges, v2etriples);
-
-        // add hyperedge name mapping into str_server
-        for (auto &&pair : id2str) str_server->add_he(pair.second, pair.first);
-        id2str.clear();
+        load_hyperedges_from_all(dfiles, edge_models, edges, v2etriples, str_server);
 
         // log meta info
         // for(int i = 0; i < edges.size(); i++) {
