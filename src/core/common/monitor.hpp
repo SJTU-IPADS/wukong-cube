@@ -72,6 +72,7 @@ private:
 
     // step latency
     std::vector<uint64_t> step_latency;
+    std::vector<uint64_t> step_bitmap;
 
 public:
     void init() {
@@ -100,20 +101,32 @@ public:
         done_time = timer::get_usec();
     }
 
+    void init_step_latency(int patterns) {
+        step_latency.assign(patterns, 0);
+        step_bitmap.assign(patterns, 0);
+    }
+
     // for step latency
-    void add_step_latency(std::vector<uint64_t> & steps) {
-        if (step_latency.empty()) step_latency.swap(steps);
-        else {
-            for(size_t i = 0; i < steps.size(); i++)
-                step_latency[i] += steps[i];
+    void add_step_latency(std::vector<uint64_t> & latency, std::vector<uint64_t> & bitmap) {
+        ASSERT_EQ(step_latency.size(), latency.size());
+        ASSERT_EQ(step_bitmap.size(), bitmap.size());
+        ASSERT_EQ(latency.size(), bitmap.size());
+        for(size_t i = 0; i < latency.size(); i++) {
+            step_latency[i] += latency[i];
+            if (step_bitmap[i]) ASSERT_EQ(step_bitmap[i], bitmap[i]);
+            else step_bitmap[i] = bitmap[i];
         }
     }
 
     // for single query
     void print_latency(int round = 1) {
         if (!step_latency.empty()) {
-            for(size_t i = 0; i < step_latency.size(); i++)
-                logstream(LOG_INFO) << "step " << i << " latency: " << (step_latency[i] / round) << " usec" << LOG_endl;
+            for(size_t i = 0; i < step_latency.size(); i++) {
+                uint32_t scnt = 0;
+                for(size_t s = 0; s < Global::num_servers; s++) scnt += (1 & (step_bitmap[i] >> s));
+                ASSERT_GT(scnt, 0);
+                logstream(LOG_INFO) << "step " << i << " latency: " << (step_latency[i] / (round * scnt)) << " usec" << LOG_endl;
+            }
         }
         logstream(LOG_INFO) << "(average) latency: " << ((done_time - init_time) / round) << " usec" << LOG_endl;
     }

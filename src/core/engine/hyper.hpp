@@ -1704,6 +1704,7 @@ private:
 
     bool execute_ops(HyperQuery &query) {
         uint64_t start, end;
+        int current_step;
         logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "] execute ops of "
                              << "Q(pqid=" << query.pqid << ", qid=" << query.qid
                              << ", step=" << query.pattern_step
@@ -1730,9 +1731,10 @@ private:
             }
 
             start = timer::get_usec();
+            current_step = query.pattern_step;
             execute_one_op(query);
             end = timer::get_usec();
-            query.result.step_latency.push_back(end - start);
+            query.result.add_step_latency(sid, current_step, (end - start));
             logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "]"
                                  << " step = " << query.pattern_step
                                  << " exec-time = " << (end - start) << " usec"
@@ -1741,12 +1743,6 @@ private:
                                  << " #e2v = " << query.result.e2v_middle_map.size()
                                  << " #v2e = " << query.result.v2e_middle_map.size()
                                  << LOG_endl;
-
-            // print step result
-            // logstream(LOG_INFO) << query.pattern_step - 1 << ": "
-            //             << query.result.get_row_num() << " row, "
-            //             << query.result.get_col_num() << " col" 
-            //             << LOG_endl;
 
             if (query.pstate == HyperQuery::HP_STEP_MATCH) {
                 query.state = HyperQuery::SQ_REPLY;

@@ -160,6 +160,7 @@ public:
         // put part meta
         d.parent.pstate = r.pstate;
         d.parent.pattern_step = r.pattern_step;
+        d.parent.result.merge_step_latency(part);
         
         // put part data 
         if (r.pstate == HyperQuery::HP_STEP_GET) {

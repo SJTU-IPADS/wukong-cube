@@ -568,6 +568,8 @@ public:
 
         // Execute the hyper query
         monitor.init();
+        monitor.init_step_latency(request.pattern_group.patterns.size());
+        request.result.init_step_latency(request.pattern_group.patterns.size());
         for (int i = 0; i < cnt; i++) {
             setpid(request);
             // only take back results of the last request if not silent
@@ -575,7 +577,7 @@ public:
 
             send_request(request);
             reply = recv_hyper_reply();
-            monitor.add_step_latency(reply.result.step_latency);
+            monitor.add_step_latency(reply.result.step_latency, reply.result.step_bitmap);
         }
         monitor.finish();
 

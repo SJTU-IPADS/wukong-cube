@@ -362,7 +362,8 @@ public:
         std::vector<int> v2c_map; // from variable ID (vid) to column ID, index: vid, value: col
 
         // latency record
-        std::vector<uint64_t> step_latency;
+        std::vector<uint64_t> step_bitmap;      // server bitmap for each step
+        std::vector<uint64_t> step_latency;     // total latency for each step
 
         void clear() {
             vid_res_table.clear();
@@ -581,6 +582,26 @@ public:
             double_res_table.append_result(r.double_res_table);
 
             update_nrows();
+        }
+
+        void init_step_latency(int steps) {
+            step_bitmap.assign(steps, 0);
+            step_latency.assign(steps, 0);
+        }
+
+        void add_step_latency(int sid, int step, uint64_t duration) {
+            ASSERT(!step_bitmap.empty());
+            step_bitmap[step] |= (1 << sid);
+            step_latency[step] += duration;
+        }
+
+        void merge_step_latency(Result& result) {
+            ASSERT(!step_bitmap.empty());
+            ASSERT_EQ(step_bitmap.size(), result.step_bitmap.size());
+            for(size_t i = 0; i < step_bitmap.size(); i++) {
+                step_latency[i] += result.step_latency[i];
+                step_bitmap[i] |= result.step_bitmap[i];
+            }
         }
     };
 
@@ -868,6 +889,7 @@ void save(Archive &ar, const wukong::HyperQuery::Result &t, unsigned int version
     ar << t.float_res_table.col_num;
     ar << t.double_res_table.col_num;
     ar << t.step_latency;
+    ar << t.step_bitmap;
     if(t.vid_res_table.get_col_num() > 0) {
         ar << t.vid_res_table.result_data;
     }
@@ -900,6 +922,7 @@ void load(Archive & ar, wukong::HyperQuery::Result &t, unsigned int version) {
     ar >> t.float_res_table.col_num;
     ar >> t.double_res_table.col_num;
     ar >> t.step_latency;
+    ar >> t.step_bitmap;
     if(t.vid_res_table.get_col_num() > 0) {
         ar >> t.vid_res_table.result_data;
     }
