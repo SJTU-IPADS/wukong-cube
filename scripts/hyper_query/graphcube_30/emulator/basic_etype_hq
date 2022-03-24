@@ -1,0 +1,8 @@
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT ?E_MF WHERE {
+	?E_MF buildin:etype %rdf:hypertype
+}
+
+# the result should be:
+#	(3, 1) without vtype

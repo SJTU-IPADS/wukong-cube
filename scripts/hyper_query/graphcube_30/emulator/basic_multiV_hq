@@ -1,0 +1,8 @@
+PREFIX dblp: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT ?E_CO WHERE {
+	[%"经营基金", %"经营基金"] buildin:edges("经营基金") ?E_CO
+}
+
+# the result should be:
+#	(3, 1) without vtype

@@ -1,0 +1,6 @@
+SELECT * WHERE {
+	%"供应商" buildin:vertices ?X
+}
+
+# the result should be:
+#	(3, 1) with const "龙腾照明集团股份有限公司的供应商" and without vtype

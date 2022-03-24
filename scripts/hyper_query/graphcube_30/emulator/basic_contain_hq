@@ -1,0 +1,8 @@
+PREFIX dblp: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT * WHERE {
+	%"经营基金" buildin:containEdges("经营基金") ?E_CO
+}
+
+# the result should be:
+#	(2, 1) with const "毛时超的经营基金" and hypertype2("经营基金")

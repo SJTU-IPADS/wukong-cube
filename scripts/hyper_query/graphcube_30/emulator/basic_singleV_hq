@@ -1,0 +1,6 @@
+SELECT * WHERE {
+	%"持股" buildin:edges("持股") ?E
+}
+
+# the result should be:
+#	(15, 1) with const "马涛" hypertype2("持股")

@@ -1,0 +1,8 @@
+SELECT ?X WHERE {
+	[%"董事会成员", %"董事会成员"] buildin:vertices ?X
+}
+
+# the result should be:
+#	(1, 1) without vtype
+#	"马涛"
+# with consts "山东圣阳电源股份有限公司的董事会成员", "深圳盛新锂能集团股份有限公司的董事会成员"
