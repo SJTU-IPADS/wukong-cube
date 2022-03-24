@@ -707,6 +707,60 @@ public:
     }
 };
 
+/**
+ * HYPER query template
+ */
+class HyperQuery_Template {
+private:
+    // no serialize
+
+public:
+    enum PatternPos { PT_INPUT = 0, PT_OUTPUT };
+    
+    HyperQuery::PatternGroup pattern_group;
+
+    int nvars;  // the number of variable in hyper patterns
+    std::vector<ssid_t> required_vars; // variables selected to return
+
+    std::vector<std::string> tpls_str; // the Types of random-constants
+    std::vector<sid_t> tpls_id; // the Types of random-constants
+    std::vector<std::pair<int, PatternPos>> tpls_pos; // the locations of random-constants
+
+    std::vector<std::vector<sid_t>> tpls_grp; // the candidates for random-constants
+
+    HyperQuery instantiate(int seed) {
+        for (int i = 0; i < tpls_pos.size(); i++) {
+            auto pos = tpls_pos[i];
+            switch (pos.second) {
+            case PT_INPUT:
+                pattern_group.patterns[pos.first].input_eids.push_back(
+                    tpls_grp[i][seed % tpls_grp[i].size()]
+                );
+                break;
+            case PT_OUTPUT:
+                pattern_group.patterns[pos.first].output_var =
+                    tpls_grp[i][seed % tpls_grp[i].size()];
+                break;
+            default:
+                ASSERT(false);
+            }
+        }
+
+        return HyperQuery(pattern_group, nvars, required_vars);
+    }
+
+    void print_hyper_template() {
+        pattern_group.print_group();
+        ASSERT_EQ(tpls_id.size(), tpls_pos.size());
+        logstream(LOG_INFO) << "template nodes[" << tpls_id.size() << "]:" << LOG_endl;
+        for (size_t i = 0; i < tpls_id.size(); i++)
+            logstream(LOG_INFO) << "\t" << i << ": type " << tpls_id[i]
+                                             << " at Pattern " << tpls_pos[i].first
+                                             << " pos " << tpls_pos[i].second
+                                             << LOG_endl;
+    }
+};
+
 } // namespace wukong
 
 namespace boost {

@@ -64,6 +64,8 @@ public:
         int64_t timestamp;
         /// numeric value
         int num;
+        /// if is a template element
+        bool tplt = false;
 
         Element(){}
 
@@ -333,7 +335,7 @@ public:
     }
 
     // Deal with string element
-	Element* makeLiteralElement(char* value){
+	Element* makeLiteralElement(char* value, bool tplt){
         logstream(LOG_DEBUG) << "[HyperParser] make literal element" << LOG_endl; 
 		Element* result = new Element();
 
@@ -342,12 +344,13 @@ public:
         value = value+1;
         result->value = std::string(value);
         result->type = Element::Literal;
+        result->tplt = tplt;
 
         return result;
 	}
 
 	// Deal with iri pattern element
-	Element* makeIriElement(char* iriValue, bool customGrammar){
+	Element* makeIriElement(char* iriValue, bool tplt){
         logstream(LOG_DEBUG) << "[HyperParser] make iri element" << LOG_endl; 
 		Element* result = new Element();
 
@@ -355,14 +358,14 @@ public:
         iriValue[strlen(iriValue)-1]='\0';
         iriValue = iriValue+1;
         result->value = std::string(iriValue);
-        if(customGrammar) result->type = Element::Template;
-        else result->type = Element::IRI;
+        result->type = Element::IRI;
+        result->tplt = tplt;
 
         return result;
 	}
 
 	// Deal with alias iri pattern element
-	Element* makePrefixIriElement(char* prefix,char* suffix,bool customGrammar){
+	Element* makePrefixIriElement(char* prefix,char* suffix,bool tplt){
         logstream(LOG_DEBUG) << "[HyperParser] add prefix iri element" << LOG_endl; 
 		Element* result=new Element();
         // Cut the real prefix
@@ -379,8 +382,9 @@ public:
         const char* newPrefix=prefixes[prefix].c_str();
         result->value = std::string(newPrefix);
         result->value += std::string(suffix);
-        if (customGrammar) result->type = Element::Template;
-        else result->type = Element::IRI;
+        result->type = Element::IRI;
+        result->tplt = tplt;
+
         return result;
     }
 

@@ -100,7 +100,7 @@ options_description       help_desc("help                display help infomation
 options_description       quit_desc("quit                quit from the console");
 options_description     config_desc("config <args>       run commands for configueration");
 options_description     logger_desc("logger <args>       run commands for logger");
-options_description     parse_desc("parse <args>         parse a single query");
+options_description     parse_desc("parse <args>         parse and print a single query");
 options_description     sparql_desc("sparql <args>       run SPARQL queries in single or batch mode");
 options_description sparql_emu_desc("sparql-emu <args>   emulate clients to continuously send SPARQL queries");
 options_description       load_desc("load <args>         load RDF data into dynamic (in-memmory) graph store");
@@ -142,6 +142,7 @@ void init_options_desc()
     // e.g., wukong> parse <args>
     parse_desc.add_options()
     (",f", value<std::string>()->value_name("<fname>"), "parse a single query from <fname>")
+    (",t", "parse a single template query from <fname>")
     ("help,h", "help message about parse")
     ;
     all_desc.add(parse_desc);
@@ -465,7 +466,10 @@ static void run_parse(Proxy * proxy, int argc, char **argv)
 
         /// parse sparql
         try {
-            proxy->run_parse_query(fname);
+            if (parse_vm.count("-t")) 
+                proxy->run_parse_template(fname);
+            else 
+                proxy->run_parse_query(fname);
         } catch (WukongException &ex) {
             logstream(LOG_ERROR) << "Query failed [ERRNO " << ex.code()
                                  << "]: " << ex.what() << LOG_endl;

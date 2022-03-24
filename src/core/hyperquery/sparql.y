@@ -124,9 +124,12 @@ PATTERN_PARAM_TYPE: etype {$$=HyperParser::ParamType::P_ETYPE;}
 
 PATTERN_ELEMENT: iri {$$=parser->makeIriElement($1, false);}
                 | identifier colon identifier {$$=parser->makePrefixIriElement($1,$3,false);}
+                | string_ {$$=parser->makeLiteralElement($1, false);}
                 | variable {$$=parser->makeVariableElement($1);}
                 | integer {$$=parser->makeIntElement(atoi($1));}
-                | string_ {$$=parser->makeLiteralElement($1);}
+                | percent iri {$$=parser->makeIriElement($2, true);}
+                | percent identifier colon identifier {$$=parser->makePrefixIriElement($2,$4,true);}
+                | percent string_ {$$=parser->makeLiteralElement($2, true);}
 
 PATTERN_TYPE: etype {$$=HyperParser::PatternType::GE;}
             | vtype {$$=HyperParser::PatternType::GV;}

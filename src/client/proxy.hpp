@@ -439,6 +439,29 @@ public:
         return 0; // success
     } // end of run_parse_query
 
+    // Parse a single template hyper query. Command is "-f" + "-t"
+    // @is: input
+    // @reply: result
+    int run_parse_template(std::string fname) {
+        uint64_t start, end;
+        HyperQuery_Template request;
+
+        // Parse the hyper query
+        start = timer::get_usec();
+        int ret = parser.parse_template(fname, request);
+        if (ret) {
+            // logstream(LOG_ERROR) << "Parsing failed! (" << parser.strerror << ")" << LOG_endl;
+            ASSERT_ERROR_CODE(false, ret);
+        }
+        end = timer::get_usec();
+        logstream(LOG_INFO) << "Parsing time: " << (end - start) << " usec" << LOG_endl;
+
+        // TODO: print query
+        request.print_hyper_template();
+
+        return 0; // success
+    } // end of run_parse_template
+
     // Run a single hyper query for @cnt times. Command is "-f"
     // @is: input
     // @reply: result
