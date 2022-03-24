@@ -38,8 +38,8 @@ namespace wukong {
 #define NBITS_ID    48
 
 // reserve two special index IDs (predicate and type)
-enum { EDGE_TYPE = 0,
-       VERTEX_TYPE = 1 };
+enum { VERTEX_TYPE = 0,
+       EDGE_TYPE = 1 };
 
 static inline bool is_htid(ssid_t id) { return (id > 1) && (id < (1 << NBITS_ETYPE)); }
 

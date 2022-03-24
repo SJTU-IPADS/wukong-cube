@@ -37,6 +37,7 @@
 // #include "core/sparql/parser.hpp"
 #include "core/hyperquery/query.hpp"
 #include "core/hyperquery/parser.hpp"
+#include "core/hypergraph/hypervertex.hpp"
 
 #include "core/network/adaptor.hpp"
 
@@ -130,6 +131,71 @@ private:
 
             logstream(LOG_INFO) << type << " has "
                                 << sqt.ptypes_grp[i].size() << " candidates" << LOG_endl;
+        }
+    }
+
+    void fill_template(HyperQuery_Template &hqt) {
+        hqt.tpls_grp.resize(hqt.tpls_id.size());
+        for (int i = 0; i < hqt.tpls_id.size(); i++) {
+            sid_t &type_id = hqt.tpls_id[i];   // the Types of random-constant
+            auto &pos = hqt.tpls_pos[i];
+            auto &pattern = hqt.pattern_group.patterns[pos.first];
+            int candidate_type;   // etype, vid or eid
+            switch (pattern.type)
+            {
+            // htid candidates
+            case HyperQuery::GE:
+                ASSERT_EQ(type_id, EDGE_TYPE);
+                candidate_type = 0;
+                break;
+            // vid candidates
+            case HyperQuery::V2E: case HyperQuery::V2V:
+                candidate_type = 1;
+                break;
+            // eid candidates
+            case HyperQuery::E2V: case HyperQuery::E2E_ITSCT: 
+            case HyperQuery::E2E_CT: case HyperQuery::E2E_IN:
+                candidate_type = 2;
+                break;
+            default:
+                ASSERT(false);
+            }
+
+            // create a TYPE query to collect constants with the certain type
+            HyperQuery request;
+            HyperQuery::Pattern pt;
+            if (candidate_type == 0) {
+                pt.type = HyperQuery::GE_TYPE;
+                pt.output_var = -1;
+            } else if (candidate_type = 1) {
+                pt.type = HyperQuery::GV;
+                pt.output_var = type_id;
+                pt.input_vars.push_back(-1);
+            } else if (candidate_type = 2) {
+                pt.type = HyperQuery::GE;
+                pt.output_var = type_id;
+                pt.input_vars.push_back(-1);
+            }
+
+            request.pattern_group.patterns.push_back(pt);
+            request.result.nvars = 1;
+            request.result.required_vars.push_back(-1);
+
+            // send TYPE query to get candidates
+            setpid(request);
+            send_request(request);
+
+            // recv reply and fill ptypes_grp
+            HyperQuery reply = recv_hyper_reply();
+            ASSERT_GT(reply.result.row_num, 0);   // there has to be candidates
+            hqt.tpls_grp[i].resize(reply.result.row_num);
+            for (int r = 0; r < reply.result.row_num; r++) 
+                hqt.tpls_grp[i][r] = candidate_type == 2?
+                                    reply.result.get_row_col_he(r, 0):      // heid_t
+                                    reply.result.get_row_col(r, 0);         // sid_t
+
+            logstream(LOG_INFO) << type_id << " has "
+                                << hqt.tpls_grp[i].size() << " candidates" << LOG_endl;
         }
     }
 
@@ -270,6 +336,17 @@ public:
         return success;
     }
 
+    // Try recv reply from engines.
+    bool tryrecv_reply(HyperQuery &r) {
+        Bundle bundle;
+        bool success = adaptor->tryrecv(bundle);
+        if (success) {
+            ASSERT(bundle.type == HYPER_QUERY);
+            r = bundle.get_hyper_query();
+        }
+
+        return success;
+    }
 
     // output result of current query
     void output_result(std::ostream &stream, SPARQLQuery &q, int sz) {
@@ -613,6 +690,129 @@ public:
 
         return 0; // success
     } // end of run_single_query
+
+    // Run a query emulator for @d seconds. Command is "-b"
+    // Warm up for @w firstly, then measure throughput.
+    // Latency is evaluated for @d seconds.
+    // Proxy keeps @p queries in flight.
+    int run_hyper_emu(std::istream &is, std::istream &fmt_stream, int d, int w, int p, Monitor &monitor) {
+        uint64_t duration = SEC(d);
+        uint64_t warmup = SEC(w);
+        int parallel_factor = p;
+        int try_rounds = 5; // rounds to try recv reply
+
+        // parse the first line of batch config file
+        // [#lights] [#heavies]
+        int nlights, nheavies;
+        is >> nlights >> nheavies;
+        int ntypes = nlights + nheavies;
+
+        if (ntypes <= 0 || nlights < 0 || nheavies < 0) {
+            logstream(LOG_ERROR) << "Invalid #lights (" << nlights << " < 0)"
+                                 << " or #heavies (" << nheavies << " < 0)!" << LOG_endl;
+            return -2; // parsing failed
+        }
+
+        std::vector<HyperQuery_Template> tpls(nlights);
+        std::vector<HyperQuery> heavy_reqs(nheavies);
+
+        // parse template queries
+        std::vector<int> loads(ntypes);
+        for (int i = 0; i < ntypes; i++) {
+            // each line is a class of light or heavy query
+            // [fname] [#load]
+            std::string fname;
+            int load;
+
+            is >> fname;
+            is >> load;
+            ASSERT(load > 0);
+            loads[i] = load;
+
+            // parse the query
+            int ret = i < nlights ?
+                           parser.parse_template(fname,tpls[i]) : // light query
+                           parser.parse(fname,heavy_reqs[i - nlights]); // heavy query
+
+            if (ret) {
+                logstream(LOG_ERROR) << "Template parsing failed!" << LOG_endl;
+                return -ret; // parsing failed
+            }
+
+            // generate a template for each class of light query
+            if (i < nlights)
+                fill_template(tpls[i]);
+        }
+
+        monitor.init(ntypes);
+
+        bool start = false; // start to measure throughput
+        uint64_t send_cnt = 0, recv_cnt = 0, flying_cnt = 0;
+
+        uint64_t init = timer::get_usec();
+        // send requeries for duration seconds
+        while ((timer::get_usec() - init) < duration) {
+            // send requests
+            for (int i = 0; i < parallel_factor - flying_cnt; i++) {
+                sweep_msgs(); // sweep pending msgs first
+
+                int idx = wukong::math::get_distribution(coder.get_random(), loads);
+                HyperQuery r = idx < nlights ?
+                                tpls[idx].instantiate(coder.get_random()) : // light query
+                                heavy_reqs[idx - nlights]; // heavy query
+
+                setpid(r);
+                r.result.blind = true; // always not take back results for emulator
+
+                if (r.start_from_index()) {
+                    r.mt_factor = Global::mt_threshold;
+                }
+
+                monitor.start_record(r.pqid, idx);
+                send_request(r);
+
+                send_cnt++;
+            }
+
+            // recieve replies (best of effort)
+            for (int i = 0; i < try_rounds; i++) {
+                HyperQuery r;
+                while (tryrecv_reply(r)) {
+                    recv_cnt++;
+                    monitor.end_record(r.pqid);
+                }
+            }
+
+            monitor.print_timely_thpt(recv_cnt, sid, tid); // print throughput
+
+            // start to measure throughput after first warmup seconds
+            if (!start && (timer::get_usec() - init) > warmup) {
+                monitor.start_thpt(recv_cnt);
+                start = true;
+            }
+
+            flying_cnt = send_cnt - recv_cnt;
+        }
+
+        monitor.end_thpt(recv_cnt); // finish to measure throughput
+
+        // recieve all replies to calculate the tail latency
+        while (recv_cnt < send_cnt) {
+            sweep_msgs();   // sweep pending msgs first
+
+            HyperQuery r;
+            while (tryrecv_reply(r)) {
+                recv_cnt ++;
+                monitor.end_record(r.pqid);
+            }
+
+            monitor.print_timely_thpt(recv_cnt, sid, tid);
+        }
+
+        monitor.finish();
+
+        return 0; // success
+    } // end of run_query_emu
 
     // Run a query emulator for @d seconds. Command is "-b"
     // Warm up for @w firstly, then measure throughput.

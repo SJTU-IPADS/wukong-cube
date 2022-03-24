@@ -162,31 +162,47 @@ private:
     HyperRMap rmap; // a map of replies for pending (fork-join) queries
     pthread_spinlock_t rmap_lock;
 
-    void op_get_vertices(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_DEBUG) << "Execute GV op:" << LOG_endl;
-
-        // TODO: right now we don's support vertice type
-        ASSERT(false);
+    void op_get_edge_types(HyperQuery& query, HyperQuery::Pattern& op) {
+        logstream(LOG_DEBUG) << "Execute GE_TYPE op:" << LOG_endl;
 
         // MUST be the first triple pattern
         ASSERT_ERROR_CODE(query.result.empty(), FIRST_PATTERN_ERROR);
 
         // check if element and parameters valid
-        ASSERT_ERROR_CODE(op.params.size() == 1, PARAMETER_INVALID);
-        ASSERT_ERROR_CODE(op.params[0].type == SID_t, PARAMETER_INVALID);
+        ASSERT_ERROR_CODE(op.params.empty(), PARAMETER_INVALID);
 
-        sid_t type_id = op.params[0].sid;
         ssid_t end = op.output_var;
         HyperQuery::Result& res = query.result;
 
         uint64_t sz = 0;
-        edge_t* vids = graph->get_index(tid, type_id, IN, sz);
-        std::vector<sid_t> updated_result_table;
-        for(uint64_t k = 0; k < sz; k++)
-            updated_result_table.push_back(vids[k].val);
+        sid_t* tids = graph->get_edge_types(sz);
 
         // update result and metadata
-        res.vid_res_table.load_data(updated_result_table);
+        res.vid_res_table.result_data.assign(tids, tids + sz);
+        res.add_var2col(end, res.get_col_num(SID_t));
+        res.set_col_num(res.get_col_num(SID_t) + 1, SID_t);
+        res.update_nrows();
+        query.advance_step();
+    }
+
+    void op_get_vertices(HyperQuery& query, HyperQuery::Pattern& op) {
+        logstream(LOG_DEBUG) << "Execute GV op:" << LOG_endl;
+
+        // TODO: right now we get vertices by hypertype
+        // MUST be the first triple pattern
+        ASSERT_ERROR_CODE(query.result.empty(), FIRST_PATTERN_ERROR);
+
+        // check if the pattern is valid
+        ASSERT_ERROR_CODE(op.input_vars.size() == 1, UNKNOWN_PATTERN);
+        HyperQuery::Result& res = query.result;
+        sid_t type_id = op.output_var;
+        ssid_t end = op.input_vars[0];
+
+        uint64_t sz = 0;
+        sid_t* vids = graph->get_vids_by_htype(tid, type_id, sz);
+
+        // update result and metadata
+        res.vid_res_table.result_data.assign(vids, vids + sz);
         res.add_var2col(end, res.get_col_num(SID_t));
         res.set_col_num(res.get_col_num(SID_t) + 1, SID_t);
         res.update_nrows();
@@ -1656,6 +1672,9 @@ private:
     void execute_one_op(HyperQuery& query) {
         HyperQuery::Pattern& op = query.get_pattern();
         switch(op.type){
+        case HyperQuery::PatternType::GE_TYPE:
+            op_get_edge_types(query, op);
+            break;
         case HyperQuery::PatternType::GV:
             op_get_vertices(query, op);
             break;

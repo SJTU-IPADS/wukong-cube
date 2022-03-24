@@ -744,7 +744,7 @@ static void run_sparql_emu(Proxy * proxy, int argc, char **argv)
 
     /// do sparql-emu
     Monitor monitor;
-    int ret = proxy->run_query_emu(ifs, fmt_stream, duration, warmup, otf, monitor);
+    int ret = proxy->run_hyper_emu(ifs, fmt_stream, duration, warmup, otf, monitor);
     if (ret != 0) {
         logstream(LOG_ERROR) << "Failed to run the query emulator (ERRNO: " << ret << ")!" << LOG_endl;
         fail_to_parse(proxy, argc, argv); // invalid cmd

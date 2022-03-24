@@ -33,7 +33,7 @@ using namespace boost::archive;
 
 class HyperParser {
 public:
-    enum PatternType { GV, GE, GP, V2E, E2V, E2E_ITSCT, E2E_CT, E2E_IN, V2V, LAST_TYPE};
+    enum PatternType { GV, GE, GP, V2E, E2V, E2E_ITSCT, E2E_CT, E2E_IN, V2V, GE_TYPE};
     enum PatternSuffix {Suffix_Dot, Suffix_LArrow, Suffix_RArrow, Suffix_Blank};
     enum ParamType { P_ETYPE, P_VTYPE, P_GE, P_LE, P_GT, P_LT, P_EQ, P_NE, NO_TYPE };
 

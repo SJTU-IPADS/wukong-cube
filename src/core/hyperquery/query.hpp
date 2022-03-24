@@ -74,7 +74,7 @@ private:
 public:
     enum SQState { SQ_PATTERN = 0, SQ_UNION, SQ_FILTER, SQ_OPTIONAL, SQ_FINAL, SQ_REPLY };
     enum HPState { HP_STEP_GET = 0, HP_STEP_MATCH};
-    enum PatternType { GV, GE, GP, V2E, E2V, E2E_ITSCT, E2E_CT, E2E_IN, V2V, LAST_TYPE};
+    enum PatternType { GV, GE, GP, V2E, E2V, E2E_ITSCT, E2E_CT, E2E_IN, V2V, GE_TYPE};
     enum ParamType { P_ETYPE, P_VTYPE, P_GE, P_LE, P_GT, P_LT, P_EQ, P_NE, NO_TYPE };
 
     class Param {
@@ -165,7 +165,7 @@ public:
         }
     
         void print_pattern() const {
-            static const char *PatternTypeName[9] = { "GV", "GE", "GP", "V2E", "E2V", "E2E_ITSCT", "E2E_CT", "E2E_IN", "V2V"};
+            static const char *PatternTypeName[] = { "GV", "GE", "GP", "V2E", "E2V", "E2E_ITSCT", "E2E_CT", "E2E_IN", "V2V", "GE_TYPE"};
 
             logstream(LOG_INFO) << "\t[ (vids) ";
             for (auto &&vid : input_vids)
@@ -722,24 +722,38 @@ public:
     int nvars;  // the number of variable in hyper patterns
     std::vector<ssid_t> required_vars; // variables selected to return
 
-    std::vector<std::string> tpls_str; // the Types of random-constants
+    // std::vector<std::string> tpls_str; // the Types of random-constants
     std::vector<sid_t> tpls_id; // the Types of random-constants
     std::vector<std::pair<int, PatternPos>> tpls_pos; // the locations of random-constants
 
-    std::vector<std::vector<sid_t>> tpls_grp; // the candidates for random-constants
+    std::vector<std::vector<uint64_t>> tpls_grp; // the candidates for random-constants
 
     HyperQuery instantiate(int seed) {
         for (int i = 0; i < tpls_pos.size(); i++) {
             auto pos = tpls_pos[i];
-            switch (pos.second) {
-            case PT_INPUT:
-                pattern_group.patterns[pos.first].input_eids.push_back(
+            auto &pattern = pattern_group.patterns[pos.first];
+            switch (pattern.type)
+            {
+            // htid candidates
+            case HyperQuery::GE:
+                ASSERT_EQ(pos.second, PT_OUTPUT);
+                pattern_group.patterns[pos.first].output_var =
+                    tpls_grp[i][seed % tpls_grp[i].size()];
+                break;
+            // vid candidates
+            case HyperQuery::V2E: case HyperQuery::V2V:
+                ASSERT_EQ(pos.second, PT_INPUT);
+                pattern_group.patterns[pos.first].input_vids.push_back(
                     tpls_grp[i][seed % tpls_grp[i].size()]
                 );
                 break;
-            case PT_OUTPUT:
-                pattern_group.patterns[pos.first].output_var =
-                    tpls_grp[i][seed % tpls_grp[i].size()];
+            // eid candidates
+            case HyperQuery::E2V: case HyperQuery::E2E_ITSCT: 
+            case HyperQuery::E2E_CT: case HyperQuery::E2E_IN:
+                ASSERT_EQ(pos.second, PT_INPUT);
+                pattern_group.patterns[pos.first].input_eids.push_back(
+                    tpls_grp[i][seed % tpls_grp[i].size()]
+                );
                 break;
             default:
                 ASSERT(false);

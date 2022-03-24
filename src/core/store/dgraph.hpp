@@ -264,6 +264,8 @@ public:
         return r;
     }
 
+    // get all edge type
+    virtual sid_t* get_edge_types(uint64_t& sz) {}
     // get heid list by vid and hyper type
     virtual heid_t* get_heids_by_vertex_and_type(int tid, sid_t vid, sid_t edge_type, uint64_t& sz) {}
     // get heid list by hyper type

@@ -74,7 +74,7 @@ protected:
     const int V2E_RATIO = 50;
 
     // all hyperedge types
-    std::vector<HyperEdgeModel> edge_types;
+    std::vector<sid_t> edge_types;
     std::map<sid_t, HyperEdgeModel> edge_models;
     // all vertex types
     std::vector<sid_t> vertex_types;
@@ -546,7 +546,7 @@ public:
             while (ifs >> edge_type >> htid) {
                 HyperEdgeModel edge_model;
                 edge_model.type_id = htid;
-                this->edge_types.push_back(edge_model);
+                this->edge_types.push_back(htid);
                 this->edge_models[htid] = edge_model;
             }
             ifs.close();
@@ -612,33 +612,37 @@ public:
     // return total num of vertex types
     inline int get_num_vertex_types() const { return this->vertex_types.size(); }
 
-    // return all edge types
-    inline std::vector<HyperEdgeModel> get_edge_types() const { return this->edge_types; }
     // return all vertex types
     inline std::vector<sid_t> get_vertex_types() const { return this->vertex_types; }
+    
+    // return all edge types
+    sid_t* get_edge_types(uint64_t& sz) override { 
+        sz = this->edge_types.size();
+        return this->edge_types.data(); 
+    }
 
     // get heid list by vid and hyper type
-    heid_t* get_heids_by_vertex_and_type(int tid, sid_t vid, sid_t edge_type, uint64_t& sz) {
+    heid_t* get_heids_by_vertex_and_type(int tid, sid_t vid, sid_t edge_type, uint64_t& sz) override {
         return v2estore->get_values(tid, PARTITION(vid), hvkey_t(vid, edge_type), sz);
     }
    
     // get heid list by hyper type
-    heid_t* get_heids_by_type(int tid, sid_t edge_type, uint64_t& sz) {
+    heid_t* get_heids_by_type(int tid, sid_t edge_type, uint64_t& sz) override {
         return v2estore->get_values(tid, this->sid, hvkey_t(0, edge_type), sz);
     }
 
     // get hyper edge content by heid
-    sid_t* get_edge_by_heid(int tid, heid_t eid, uint64_t& sz) {
+    sid_t* get_edge_by_heid(int tid, heid_t eid, uint64_t& sz) override {
         return hestore->get_values(tid, PARTITION(eid), hekey_t(eid), sz);
     }
 
     // get vids by hyper type
-    sid_t* get_vids_by_htype(int tid, sid_t edge_type, uint64_t& sz) {
+    sid_t* get_vids_by_htype(int tid, sid_t edge_type, uint64_t& sz) override {
         return hestore->get_values(tid, this->sid, hekey_t(edge_type), sz);
     }
 
     // get heid list by vid and hyper type
-    std::vector<std::pair<sid_t*, uint64_t>> get_edges_by_type(int tid, sid_t edge_type) {
+    std::vector<std::pair<sid_t*, uint64_t>> get_edges_by_type(int tid, sid_t edge_type) override {
         // index vertex should be 0 and always local
         std::vector<std::pair<sid_t*, uint64_t>> result;
         uint64_t edge_sz;
@@ -653,7 +657,7 @@ public:
     }
 
     // get the type of a hyperedge
-    heid_t* get_type_by_heid(int tid, heid_t eid, uint64_t& sz) {
+    heid_t* get_type_by_heid(int tid, heid_t eid, uint64_t& sz) override {
         return v2estore->get_values(tid, this->sid, hvkey_t(eid, EDGE_TYPE), sz);
     }
 
