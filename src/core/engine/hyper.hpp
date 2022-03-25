@@ -1721,9 +1721,7 @@ private:
                 generate_sub_query(query, sub_queries);
                 rmap.put_parent_request(query, sub_queries.size());
                 for (int i = 0; i < sub_queries.size(); i++) {
-                    // TODO: pick a random dst engine
-                    int dst_tid = tid;
-                    // int dst_tid = coder->get_random() % Global::num_engines + Global::num_proxies;
+                    int dst_tid = (coder->get_random() % Global::num_engines) + Global::num_proxies;
                     Bundle bundle(sub_queries[i].second);
                     msgr->send_msg(bundle, sub_queries[i].first, dst_tid);
                 }
