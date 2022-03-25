@@ -160,6 +160,7 @@ public:
         // put part meta
         d.parent.pstate = r.pstate;
         d.parent.pattern_step = r.pattern_step;
+        d.parent.forked = r.forked;
         d.parent.result.merge_step_latency(part);
         
         // put part data 
@@ -167,7 +168,6 @@ public:
             d.parent.result.v2c_map = r.result.v2c_map;
             whole.append_result(part);
         } else {
-            whole.candidates.insert(whole.candidates.end(), part.candidates.begin(), part.candidates.end());
             whole.e2v_middle_map.insert(part.e2v_middle_map.begin(), part.e2v_middle_map.end());
             whole.v2e_middle_map.insert(part.v2e_middle_map.begin(), part.v2e_middle_map.end());
         }
@@ -176,7 +176,8 @@ public:
                              << ", cnt = " << d.cnt 
                              << ", e2v_middle = " << whole.e2v_middle_map.size()
                              << ", v2e_middle = " << whole.v2e_middle_map.size()
-                             << ", candidates = " << whole.candidates.size()
+                             << ", pstate = " << r.pstate
+                             << ", forked = " << r.forked
                              << LOG_endl;
     }
 
@@ -203,7 +204,6 @@ public:
             // copy data of middle result
             r.result.e2v_middle_map.swap(reply.result.e2v_middle_map);
             r.result.v2e_middle_map.swap(reply.result.v2e_middle_map);
-            r.result.candidates.swap(reply.result.candidates);
         }        
 
         internal_map.erase(qid);

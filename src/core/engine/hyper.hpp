@@ -163,7 +163,7 @@ private:
     pthread_spinlock_t rmap_lock;
 
     void op_get_edge_types(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_DEBUG) << "Execute GE_TYPE op:" << LOG_endl;
+        logstream(LOG_DEBUG) << "#" << sid << " Execute GE_TYPE op:" << LOG_endl;
 
         // MUST be the first triple pattern
         ASSERT_ERROR_CODE(query.result.empty(), FIRST_PATTERN_ERROR);
@@ -186,7 +186,7 @@ private:
     }
 
     void op_get_vertices(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_DEBUG) << "Execute GV op:" << LOG_endl;
+        logstream(LOG_DEBUG) << "#" << sid << " Execute GV op:" << LOG_endl;
 
         // TODO: right now we get vertices by hypertype
         // MUST be the first triple pattern
@@ -210,7 +210,7 @@ private:
     }
 
     void op_get_edges(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_DEBUG) << "Execute GE op:" << LOG_endl;
+        logstream(LOG_DEBUG) << "#" << sid << " Execute GE op:" << LOG_endl;
         
         // valid GE op: 
         //      1. const type -> single Unknown var (first pattern)
@@ -272,7 +272,7 @@ private:
     }
 
     void op_get_e2v(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_DEBUG) << "Execute E2V op:" << LOG_endl;
+        logstream(LOG_DEBUG) << "#" << sid << " Execute E2V op:" << LOG_endl;
 
         // valid E2V op: 
         //      1. multi Const var -> single Unknown var
@@ -417,7 +417,7 @@ private:
     }
 
     void op_get_v2e(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_DEBUG) << "Execute V2E op:" << LOG_endl;
+        logstream(LOG_DEBUG) << "#" << sid << " Execute V2E op:" << LOG_endl;
 
         // valid V2E op: 
         //      1. multi Const var -> single Unknown var
@@ -566,13 +566,13 @@ private:
     }
 
     void op_get_v2v(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_DEBUG) << "Execute V2V op:" << LOG_endl;
+        logstream(LOG_DEBUG) << "#" << sid << " Execute V2V op:" << LOG_endl;
         
-        // valid E2V op: 
-        //      1. E2E_ITSCT: multi const/known/const+known var -> single Unknown var
+        // valid V2V op: 
+        //      1. V2V_ITSCT: multi const/known/const+known var -> single Unknown var
         //          - mandatory first param "etype": Specify the hyperedge type
         //          - mandatory second param "ge"/"gt"/...: Specify intersect condition
-        //      2. E2E_ITSCT: multi const/known/const+known var -> single known var
+        //      2. V2V_ITSCT: multi const/known/const+known var -> single known var
         //          - mandatory first param "etype": Specify the hyperedge type
         //          - mandatory param "ge"/"gt"/...: Specify intersect condition
 
@@ -772,7 +772,7 @@ private:
     }
 
     void op_get_e2e(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_DEBUG) << "Execute E2E op:" << LOG_endl;
+        logstream(LOG_DEBUG) << "#" << sid << " Execute E2E op:" << LOG_endl;
         
         // valid E2V op: 
         //      1. E2E_ITSCT: multi const/known/const+known var -> single Unknown var
@@ -1003,13 +1003,13 @@ private:
     }
     
     void op_get_v2v_distributed(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_DEBUG) << "Execute V2V op:" << LOG_endl;
+        logstream(LOG_DEBUG) << "#" << sid << " Execute V2V op:" << LOG_endl;
         
-        // valid E2V op: 
-        //      1. E2E_ITSCT: multi const/known/const+known var -> single Unknown var
+        // valid V2V op: 
+        //      1. V2V_ITSCT: multi const/known/const+known var -> single Unknown var
         //          - mandatory first param "etype": Specify the hyperedge type
         //          - mandatory second param "ge"/"gt"/...: Specify intersect condition
-        //      2. E2E_ITSCT: multi const/known/const+known var -> single known var
+        //      2. V2V_ITSCT: multi const/known/const+known var -> single known var
         //          - mandatory first param "etype": Specify the hyperedge type
         //          - mandatory param "ge"/"gt"/...: Specify intersect condition
 
@@ -1035,22 +1035,13 @@ private:
         }
         ssid_t &end = op.output_var;
         int end_col = res.var2col(end);
-        sid_t he_type;
-        if (end_col == NO_RESULT_COL) {
-            if (input_vars.empty()) ASSERT_ERROR_CODE(res.empty() && query.pattern_step == 0, FIRST_PATTERN_ERROR);
-            ASSERT_ERROR_CODE(op.params.size() == 2, PARAMETER_INVALID);  // params: he_type
-            ASSERT_ERROR_CODE(op.params[0].type == SID_t && is_htid(op.params[0].sid), PARAMETER_INVALID);
-            ASSERT_ERROR_CODE(op.params[1].type == INT_t, PARAMETER_INVALID);
-            he_type = op.params[0].sid;
-        } else {
-            ASSERT_ERROR_CODE(op.params.size() == 1 && op.params[0].type == INT_t, PARAMETER_INVALID);  // params: none
-        }
+        sid_t he_type = op.params[0].sid;
+        if (input_vars.empty()) ASSERT_ERROR_CODE(res.empty() && query.pattern_step == 0, FIRST_PATTERN_ERROR);
 
         // valid check for intersect/in/contain operation
         auto valid_hes = [&](std::set<heid_t> &input, std::set<heid_t> &output) -> bool {
-            int param_idx = end_col == NO_RESULT_COL? 1: 0;
-            HyperQuery::ParamType &p_type = op.params[param_idx].p_type;
-            int &limit = op.params[param_idx].num;
+            HyperQuery::ParamType &p_type = op.params[1].p_type;
+            int &limit = op.params[1].num;
             int intersect_factor = intersect_set_num(input, output);
             switch (p_type)
             {
@@ -1148,18 +1139,8 @@ private:
                 }
             }
 
-            // if unknown, get candidates
-            if (end_col == NO_RESULT_COL) {
-                vids = graph->get_vids_by_htype(tid, he_type, vid_sz);
-                res.candidates.assign(vids, vids + vid_sz);
-
-                for (int j = 0; j < vid_sz; j++) {
-                    sid_t cur = vids[j];
-                    if (PARTITION(cur) != sid || v2e_middle_map.find(cur) != v2e_middle_map.end()) continue;
-                    heids = graph->get_heids_by_vertex_and_type(tid, cur, he_type, he_sz);
-                    v2e_middle_map[cur] = std::vector<heid_t>(heids, heids + he_sz);
-                }
-            }
+            // const/known-to-unknown requires a second fork
+            if (end_col == NO_RESULT_COL) query.forked = false;
 
             // set pstate
             state = HyperQuery::HP_STEP_MATCH;
@@ -1168,10 +1149,14 @@ private:
             // do the second step: intersect all hids sets from different nodes
 
             if (end_col == NO_RESULT_COL) {     // to-unknown
+                // get candidates
+                vids = graph->get_vids_by_htype(tid, he_type, vid_sz);
+                
                 // iterate through each candidate hyper edge
-                for (auto &&cand : res.candidates) {
-                    sid_t candidate = (sid_t)cand;
-                    auto curr_he = get_vh_from_map(candidate);
+                for (int i = 0; i < vid_sz; i++) {
+                    sid_t &candidate = vids[i];
+                    heids = graph->get_heids_by_vertex_and_type(tid, candidate, he_type, he_sz);
+                    std::set<heid_t> curr_he(heids, heids + he_sz);
 
                     // check if intersect with each const hyperedge
                     bool flag = true;
@@ -1243,7 +1228,7 @@ private:
     }
 
     void op_get_e2e_distributed(HyperQuery& query, HyperQuery::Pattern& op) {
-        logstream(LOG_DEBUG) << "Execute E2E op:" << LOG_endl;
+        logstream(LOG_DEBUG) << "#" << sid << " Execute E2E op:" << LOG_endl;
         
         // valid E2V op: 
         //      1. E2E_ITSCT: multi const/known/const+known var -> single Unknown var
@@ -1341,7 +1326,6 @@ private:
         heid_t* heids;
         HyperQuery::Result updated_result;
 
-        // TODO: optimize single K2U
         if (input_eids.size() == 1 && op.input_vars.empty()) {      // single-const-to-unknown/known
             // the const hyperedge should be in e2v_middle_map already
             std::set<sid_t> const_he = get_he_from_map(input_eids[0]);
@@ -1405,18 +1389,8 @@ private:
                 }
             }
 
-            // if unknown, get candidates
-            if (end_col == NO_RESULT_COL) {
-                heids = graph->get_heids_by_type(tid, he_type, he_sz);
-                res.candidates.assign(heids, heids + he_sz);
-
-                for (int j = 0; j < he_sz; j++) {
-                    heid_t cur = heids[j];
-                    if (PARTITION(cur) != sid || e2v_middle_map.find(cur) != e2v_middle_map.end()) continue;
-                    vids = graph->get_edge_by_heid(tid, cur, vid_sz);
-                    e2v_middle_map[cur] = std::vector<sid_t>(vids, vids + vid_sz);
-                }
-            }
+            // const/known-to-unknown requires a second fork
+            if (end_col == NO_RESULT_COL) query.forked = false;
 
             // set pstate
             state = HyperQuery::HP_STEP_MATCH;
@@ -1425,9 +1399,14 @@ private:
             // do the second step: intersect all hids sets from different nodes
 
             if (end_col == NO_RESULT_COL) {     // to-unknown
+                // get candidates
+                heids = graph->get_heids_by_type(tid, he_type, he_sz);
+                
                 // iterate through each candidate hyper edge
-                for (auto &&candidate : res.candidates) {
-                    auto curr_he = get_he_from_map(candidate);
+                for (int i = 0; i < he_sz; i++) {
+                    heid_t &candidate = heids[i];
+                    vids = graph->get_edge_by_heid(tid, candidate, vid_sz);
+                    std::set<sid_t> curr_he(vids, vids + vid_sz);
 
                     // check if intersect with each const hyperedge
                     bool flag = true;
@@ -1502,7 +1481,7 @@ private:
     // return pairs of (dst_sid, sub_query)
     void generate_sub_query(HyperQuery &query, std::vector<std::pair<int, HyperQuery>>& sub_queries) {
         // check pstate
-        ASSERT_EQ(query.pstate, HyperQuery::HP_STEP_GET);
+        // ASSERT_EQ(query.pstate, HyperQuery::HP_STEP_GET);
         
         HyperQuery::Pattern& op = query.get_pattern();
         sub_queries.reserve(Global::num_servers);
@@ -1607,7 +1586,7 @@ private:
     // determine fork-join or in-place execution
     bool need_fork_join(HyperQuery &query) {
         // always need NOT fork-join when executing on single machine
-        if (Global::num_servers == 1 || query.forked || query.pstate == HyperQuery::HP_STEP_MATCH) return false;
+        if (Global::num_servers == 1 || query.forked) return false;
 
         HyperQuery::Result& res = query.result;
         HyperQuery::Pattern& op = query.get_pattern();
@@ -1713,7 +1692,6 @@ private:
                              << " #rows = " << query.result.get_row_num()
                              << " #v2e = " << query.result.v2e_middle_map.size()
                              << " #e2v = " << query.result.e2v_middle_map.size()
-                             << " #cand = " << query.result.candidates.size()
                              << LOG_endl;
         do {
             if (need_fork_join(query)) {
@@ -1734,6 +1712,8 @@ private:
             end = timer::get_usec();
             query.result.add_step_latency(sid, current_step, (end - start));
             logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "]"
+                                 << " query " << query.qid
+                                 << ": pqid = " << query.pqid
                                  << " step = " << query.pattern_step
                                  << " exec-time = " << (end - start) << " usec"
                                  << " #cols = " << query.result.get_col_num()
@@ -1771,8 +1751,6 @@ public:
     }
 
     void execute_hyper_query(HyperQuery &query) {
-        // static int count = 0;
-        // if (count++ > 100) exit(0);
         logstream(LOG_DEBUG) << "[" << sid << "-" << tid << "]"
                         << " get HyperQuery"
                         << "[ QID=" << query.qid 
