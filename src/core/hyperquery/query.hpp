@@ -347,6 +347,7 @@ public:
         // middle result of a pattern
         std::map<sid_t, std::vector<heid_t>> v2e_middle_map;
         std::map<heid_t, std::vector<sid_t>> e2v_middle_map;
+        std::vector<bool> cached;   // from variable ID (vid) to cache state
 
         // data
         ResultTable<sid_t> vid_res_table;
@@ -602,6 +603,45 @@ public:
                 step_bitmap[i] |= result.step_bitmap[i];
             }
         }
+   
+        void cache_var(ssid_t var) {
+            ASSERT_LT(var, 0);
+
+            // the number of variables is known before calling cache_var()
+            ASSERT(nvars > 0);
+            if (cached.size() == 0)
+                cached.resize(nvars, false); // init
+
+            int idx = - var - 1;
+            ASSERT_LT(idx, nvars);
+            cached[idx] = true;
+        }
+
+        void uncache_var(ssid_t var) {
+            ASSERT_LT(var, 0);
+
+            // the number of variables is known before calling cache_var()
+            ASSERT(nvars > 0);
+            if (cached.size() == 0)
+                cached.resize(nvars, false); // init
+
+            int idx = - var - 1;
+            ASSERT_LT(idx, nvars);
+            cached[idx] = false;
+        }
+
+        bool cache_state(ssid_t var) {
+            ASSERT_LT(var, 0);
+
+            // the number of variables is known before calling cache_var()
+            ASSERT(nvars > 0);
+            if (cached.size() == 0)
+                cached.resize(nvars, false); // init
+
+            int idx = - var - 1;
+            ASSERT_LT(idx, nvars);
+            return cached[idx];
+        }
     };
 
     int qid = -1;   // query id (track engine (sid, tid))
@@ -655,7 +695,8 @@ public:
         this->pstate = HP_STEP_GET;
         this->forked = false;
 
-        // TODO: clear middle result
+        // clear middle result
+        shrink_middle_result();
     }
 
     int get_pattern_step() {
@@ -666,9 +707,48 @@ public:
     void shrink() {
         pattern_group.patterns.clear();
 
+        // discard middle result
+        result.cached.clear();
+        result.v2e_middle_map.clear();
+        result.e2v_middle_map.clear();
+
         // discard results if does not care
         if (result.blind)
             result.clear(); // clear data but reserve metadata (e.g., #rows, #cols)
+    }
+
+    // remove useless middle results
+    void shrink_middle_result() {
+        // clear all v2e, because the next v2e may have a diff he_type
+        result.v2e_middle_map.clear();
+
+        // collect useful HEID_t columns
+        std::vector<int> remain_cols;   // known columns to remain
+        int cnt = 0;
+        for (int i = 0; i < result.nvars; i++) {
+            ssid_t var = - i - 1;
+            int col = result.var2col(var);
+            if (!result.cache_state(var)) continue; // skip uncached vars
+            if (col == NO_RESULT_COL || result.var_type(var) != HEID_t) ASSERT(false);  // only known heids can be cached
+            if (require_caching(var, pattern_step)) 
+                remain_cols.push_back(col);
+            else {
+                cnt++;
+                result.uncache_var(var);
+            }
+        }
+        if (cnt == 0) return;  // nothing to remove
+
+        // remain useful e2v for future step
+        std::map<heid_t, std::vector<sid_t>> updated_e2v_middle_map;
+        for (size_t r = 0; r < result.row_num; r++)
+            for (auto &&c : remain_cols) {
+                heid_t cur = result.get_row_col_he(r, c);
+                auto iter = result.e2v_middle_map.find(cur);
+                ASSERT(iter != result.e2v_middle_map.end());
+                updated_e2v_middle_map[cur] = iter->second;
+            }
+        result.e2v_middle_map.swap(updated_e2v_middle_map);
     }
 
     bool has_pattern() { return pattern_group.patterns.size() > 0; }
@@ -702,6 +782,49 @@ public:
          */
         const Pattern& start_pattern = pattern_group.patterns[0];
         return (start_pattern.type == GE || start_pattern.type == GV);
+    }
+
+    // if the var will be used as known in future steps
+    bool require_caching(ssid_t var, int next_step) {
+        if (result.var_type(var) != HEID_t) return false;
+        for (size_t i = next_step; i < pattern_group.patterns.size(); i++) {
+            Pattern &pt = get_pattern(i);
+            // check input vars
+            for (auto &&input_var : pt.input_vars)
+                if (var == input_var) return true;
+
+            // check output vars
+            if (var == pt.output_var) return true;
+        }
+        return false;
+    }
+
+    bool cached_all_vars(int step) {
+        Pattern& op = get_pattern(step);
+        // PatternType& type = op.type;
+        int type = 0;
+
+        // we only cache e2v middle results
+        if (op.type == E2V) type = 1;
+        else if (op.type == E2E_ITSCT || op.type == E2E_IN || op.type == E2E_CT) type = 2;
+        if (!type) return false;
+        
+        // check input consts
+        for (auto &&eid : op.input_eids)
+            if (result.e2v_middle_map.find(eid) == result.e2v_middle_map.end())
+                return false;
+
+        // check input vars
+        for (auto &&var : op.input_vars)
+            if (!result.cache_state(var)) return false;
+
+        // check output var
+        ssid_t var = op.output_var;
+        int col = result.var2col(var);
+        if (type == 1 && col != NO_RESULT_COL && !result.cache_state(var)) return false;
+        else if (type == 2 && col != NO_RESULT_COL && !result.cache_state(var)) return false;
+
+        return true;
     }
 
     void print_hyper_query() {
@@ -881,6 +1004,7 @@ void save(Archive &ar, const wukong::HyperQuery::Result &t, unsigned int version
     ar << t.v2c_map;
     ar << t.v2e_middle_map;
     ar << t.e2v_middle_map;
+    ar << t.cached;
     ar << t.vid_res_table.col_num;
     ar << t.heid_res_table.col_num;
     ar << t.float_res_table.col_num;
@@ -913,6 +1037,7 @@ void load(Archive & ar, wukong::HyperQuery::Result &t, unsigned int version) {
     ar >> t.v2c_map;
     ar >> t.v2e_middle_map;
     ar >> t.e2v_middle_map;
+    ar >> t.cached;
     ar >> t.vid_res_table.col_num;
     ar >> t.heid_res_table.col_num;
     ar >> t.float_res_table.col_num;

@@ -162,6 +162,33 @@ private:
     HyperRMap rmap; // a map of replies for pending (fork-join) queries
     pthread_spinlock_t rmap_lock;
 
+    // cache useful e2v middle result
+    void cache_middle_result(HyperQuery& query, int step, ssid_t var) {
+        ASSERT_NE(query.pattern_step, 0);
+        HyperQuery::Result& res = query.result;
+        auto &e2v_middle_map = res.e2v_middle_map;
+        
+        // skip cached var, skip unusefule var, and only cache HEID_t var
+        if (Global::num_servers == 1) return;
+        if (res.cache_state(var) || res.var_type(var) != HEID_t || !query.require_caching(var, step)) return;
+        int col = res.var2col(var);
+        ASSERT_NE(col, NO_RESULT_COL);
+
+        // get hyperedges
+        sid_t *vids = NULL;
+        uint64_t vid_sz = 0;
+        int nrows = res.get_row_num();
+        for(int i = 0; i < nrows; i++) {
+            heid_t cur = res.get_row_col_he(i, col);
+            if (PARTITION(cur) != sid || e2v_middle_map.find(cur) != e2v_middle_map.end()) continue;
+            vids = graph->get_edge_by_heid(tid, cur, vid_sz);
+            e2v_middle_map[cur] = std::vector<sid_t>(vids, vids + vid_sz);
+        }
+
+        // update meta
+        res.cache_var(var);
+    }
+
     void op_get_edge_types(HyperQuery& query, HyperQuery::Pattern& op) {
         logstream(LOG_DEBUG) << "#" << sid << " Execute GE_TYPE op:" << LOG_endl;
 
@@ -269,6 +296,7 @@ private:
         // update result metadata
         res.update_nrows();
         query.advance_step();
+        cache_middle_result(query, query.pattern_step, end);
     }
 
     void op_get_e2v(HyperQuery& query, HyperQuery::Pattern& op) {
@@ -353,8 +381,9 @@ private:
                 }
             }
             
-            // set pstate
+            // update meta
             state = HyperQuery::HP_STEP_MATCH;
+            for (auto &&var : op.input_vars) query.result.cache_var(var);
             return;
         } else if (state == HyperQuery::HP_STEP_MATCH) {
             // do the second step: intersect all hids sets from different nodes
@@ -1392,8 +1421,10 @@ private:
             // const/known-to-unknown requires a second fork
             if (end_col == NO_RESULT_COL) query.forked = false;
 
-            // set pstate
+            // update meta
             state = HyperQuery::HP_STEP_MATCH;
+            for (auto &&var : op.input_vars) query.result.cache_var(var);
+            if (end_col != NO_RESULT_COL) query.result.cache_var(end);
             return;
         } else if (state == HyperQuery::HP_STEP_MATCH) {
             // do the second step: intersect all hids sets from different nodes
@@ -1475,6 +1506,9 @@ private:
         res.update_nrows();
         // increase pattern step
         query.advance_step();
+        // cache middle result
+        if (input_eids.size() == 1 && op.input_vars.empty())
+            cache_middle_result(query, query.pattern_step, end);
     }
 
     // generate sub requests for certain servers
@@ -1694,6 +1728,10 @@ private:
                              << " #e2v = " << query.result.e2v_middle_map.size()
                              << LOG_endl;
         do {
+            current_step = query.pattern_step;
+            if (query.cached_all_vars(current_step))
+                query.pstate = HyperQuery::HP_STEP_MATCH;
+            
             if (need_fork_join(query)) {
                 std::vector<std::pair<int, HyperQuery>> sub_queries;
                 generate_sub_query(query, sub_queries);
@@ -1707,7 +1745,6 @@ private:
             }
 
             start = timer::get_usec();
-            current_step = query.pattern_step;
             execute_one_op(query);
             end = timer::get_usec();
             query.result.add_step_latency(sid, current_step, (end - start));
@@ -1720,6 +1757,7 @@ private:
                                  << " #rows = " << query.result.get_row_num()
                                  << " #e2v = " << query.result.e2v_middle_map.size()
                                  << " #v2e = " << query.result.v2e_middle_map.size()
+                                 << " #cached = " << query.result.cached.size()
                                  << LOG_endl;
 
             if (query.pstate == HyperQuery::HP_STEP_MATCH) {

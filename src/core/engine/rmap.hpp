@@ -142,6 +142,7 @@ public:
         // not exist
         ASSERT(internal_map.find(r.qid) == internal_map.end());
 
+        r.result.cached.clear();
         Item d = { .cnt = cnt, .parent = r, };
         //d.cnt = cnt;
         //d.parent = r;
@@ -162,15 +163,20 @@ public:
         d.parent.pattern_step = r.pattern_step;
         d.parent.forked = r.forked;
         d.parent.result.merge_step_latency(part);
+
+        // put middle result
+        if (d.parent.result.cached.empty()) d.parent.result.cached = r.result.cached;
+        else ASSERT(d.parent.result.cached == r.result.cached);
         
+        whole.e2v_middle_map.insert(part.e2v_middle_map.begin(), part.e2v_middle_map.end());
+        whole.v2e_middle_map.insert(part.v2e_middle_map.begin(), part.v2e_middle_map.end());
+
         // put part data 
         if (r.pstate == HyperQuery::HP_STEP_GET) {
             d.parent.result.v2c_map = r.result.v2c_map;
             whole.append_result(part);
-        } else {
-            whole.e2v_middle_map.insert(part.e2v_middle_map.begin(), part.e2v_middle_map.end());
-            whole.v2e_middle_map.insert(part.v2e_middle_map.begin(), part.v2e_middle_map.end());
-        }
+        } 
+
         logstream(LOG_DEBUG) << "put parent-qid=" << r.pqid
                              << " and #sub-qid=" << r.qid
                              << ", cnt = " << d.cnt 
@@ -178,10 +184,11 @@ public:
                              << ", v2e_middle = " << whole.v2e_middle_map.size()
                              << ", pstate = " << r.pstate
                              << ", forked = " << r.forked
+                             << ", cached = " << r.result.cached.size()
                              << LOG_endl;
     }
 
-   bool is_ready(int qid) {
+    bool is_ready(int qid) {
         return internal_map[qid].cnt == 0; 
     }
 
@@ -200,11 +207,11 @@ public:
             // copy data of result
             r.result.load_data(reply.result);
             r.result.update_nrows();
-        } else {
-            // copy data of middle result
-            r.result.e2v_middle_map.swap(reply.result.e2v_middle_map);
-            r.result.v2e_middle_map.swap(reply.result.v2e_middle_map);
-        }        
+        }
+
+        // copy data of middle result
+        r.result.e2v_middle_map.swap(reply.result.e2v_middle_map);
+        r.result.v2e_middle_map.swap(reply.result.v2e_middle_map);
 
         internal_map.erase(qid);
         logstream(LOG_DEBUG) << "erase parent-qid=" << qid << LOG_endl;
