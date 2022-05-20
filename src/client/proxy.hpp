@@ -295,6 +295,9 @@ public:
         ASSERT(r.pqid != -1);
         logstream(LOG_DEBUG) << "Sending HyperQuery to engine. r.pqid=" << r.pqid << LOG_endl;
 
+        // init step latency
+        r.result.init_step_latency(r.pattern_group.patterns.size());
+
         // submit the request to a certain server
         int start_sid = PARTITION(r.pattern_group.get_start());
         Bundle bundle(r);    
@@ -569,7 +572,6 @@ public:
         // Execute the hyper query
         monitor.init();
         monitor.init_step_latency(request.pattern_group.patterns.size());
-        request.result.init_step_latency(request.pattern_group.patterns.size());
         for (int i = 0; i < cnt; i++) {
             setpid(request);
             // only take back results of the last request if not silent
