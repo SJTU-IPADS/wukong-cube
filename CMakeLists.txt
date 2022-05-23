@@ -100,15 +100,9 @@ endif(TRDF_MODE)
 execute_process(
   COMMAND bison -t -rall ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.y -d -b ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql
 )
-if(TRDF_MODE)
-  execute_process(
-    COMMAND flex -o ${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql_time.l
-  )
-else()
-  execute_process(
-    COMMAND flex -o ${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.l
-  )
-endif(TRDF_MODE)
+execute_process(
+  COMMAND flex -o ${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.l
+)
 
 SET_SOURCE_FILES_PROPERTIES(${PROJECT_SOURCE_DIR}/src/core/sparql/lex.yy.c 
   ${PROJECT_SOURCE_DIR}/src/core/sparql/sparql.tab.c 
