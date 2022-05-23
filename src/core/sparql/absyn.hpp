@@ -70,12 +70,9 @@ public:
     /// A graph pattern
     struct Pattern {
         /// The entires
-        Element subject, predicate, object;
-    #ifdef TRDF_MODE
-        Element ts, te;
+        Element subject, predicate, object, ts, te;
         Pattern(Element subject, Element predicate, Element object, Element ts, Element te)
             : subject(subject), predicate(predicate), object(object), ts(ts), te(te) { }
-    #endif
         /// Direction
         dir_t direction = OUT;
         /// Constructor
@@ -327,47 +324,22 @@ public:
     int getFetchStep() const { return fetch_step; }
 
     // from snapshot <>
-    void parseFromSnapshot(char* iri_){
-        #ifndef TRDF_MODE
-            throw ParserException("from clause currently not implemented");
-        #endif
-        std::string iri(iri_);
-        iri = iri.substr(1,iri.size()-2);
-        if(wukong::time_tool::is_date(iri)) {
-            ts = wukong::time_tool::str2int(iri);
-            te = ts + 24 * 60 * 60;
-        } else if(wukong::time_tool::is_time(iri)) {
-            ts = wukong::time_tool::str2int(iri);
-            te = ts;
-        } else {
-            throw ParserException("snapshot format must be <yyyy-MM-dd> or <yyyy-MM-ddTHH:mm:ss>");
-        }
+    void parseFromSnapshot(char* datetime){
+        std::string datetime_str(datetime);
+        datetime_str = datetime_str.substr(0, 19);
+        ts = wukong::time_tool::str2int(datetime_str);
+        te = ts;
     }
 
     // from []
-    void parseFromTime(char* time_interval){
-        #ifndef TRDF_MODE
-            throw ParserException("from clause currently not implemented");
-        #endif  
-        std::string val = std::string(time_interval);
-        val = val.substr(1, val.size() - 2);
-
-        auto it = std::remove_if(val.begin(), val.end(), ::isspace);
-        val.erase(it, val.end());
-
-        size_t found = val.find(",");
-        if (found == std::string::npos)
-            throw ParserException("time interval format must be [yyyy-MM-ddTHH:mm:ss, yyyy-MM-ddTHH:mm:ss]");
-
-        std::string startStr = val.substr(0, found);
-        std::string endStr = val.substr(found + 1);
-
-        if(wukong::time_tool::is_time(startStr) && wukong::time_tool::is_time(endStr)) {
-            ts = wukong::time_tool::str2int(startStr);
-            te = wukong::time_tool::str2int(endStr);
-        } else {
-            throw ParserException("time interval format must be [yyyy-MM-ddTHH:mm:ss, yyyy-MM-ddTHH:mm:ss]");
-        }
+    void parseFromTime(char* start_time, char* end_time){
+        end_time[strlen(end_time) - 1] = '\0';
+        std::string ts_str(start_time);
+        ts_str = ts_str.substr(0, 19);
+        std::string te_str(end_time);
+        te_str = te_str.substr(0, 19);
+        ts = wukong::time_tool::str2int(ts_str);
+        te = wukong::time_tool::str2int(te_str);
     }
 
     // Register the query type
@@ -376,7 +348,7 @@ public:
     }
 
 	// Register the new prefix
-	void addPrefix(char* name,char* iri){    
+	void addPrefix(char* name,char* iri){  
         // Cut the real prefix
         int pos = 0;
         for(int i=0;i<strlen(name);++i){
@@ -533,82 +505,29 @@ public:
     }
 
 	// Register the projection 
-	Pattern* addPattern(Element* subject, Element* predicate, Element* object, int suffix,char* timeInterval){
-    #ifdef TRDF_MODE
-        Element tsElement;
-        Element teElement;
-        if (timeInterval) {
-            std::string val = std::string(timeInterval);
-            size_t found = val.find("]");
-            val = val.substr(1,found-1);
-            auto it = std::remove_if(val.begin(), val.end(), ::isspace);
-            val.erase(it, val.end());
-
-            found = val.find(",");
-            if (found == std::string::npos)
-                throw ParserException("time interval format must be [start_time, end_time]");
-
-            std::string startStr = val.substr(0, found);
-            std::string endStr = val.substr(found + 1);
-            if(wukong::time_tool::is_time(startStr)) {
-                tsElement.type = TimeStamp;
-                tsElement.timestamp = wukong::time_tool::str2int(startStr);
-            } else if (startStr.size() > 1 && (startStr.at(0) == '?'  || startStr.at(0) == '$')) {
-                tsElement.type = Variable;
-                tsElement.id = nameVariable(startStr.substr(1));
-            } else {
-                throw ParserException("start time must be a datetime like 'yyyy-MM-ddThh:mm:ss' or a variable");
-            }
-
-            if(wukong::time_tool::is_time(endStr)) {
-                teElement.type = TimeStamp;
-                teElement.timestamp = wukong::time_tool::str2int(endStr);
-            } else if (endStr.size() > 1 && (endStr.at(0) == '?'  || endStr.at(0) == '$')) {
-                teElement.type = Variable;
-                teElement.id = nameVariable(endStr.substr(1));
-            } else {
-                throw ParserException("end time must be a datetime like 'yyyy-MM-ddThh:mm:ss' or a variable");
-            }
-        } else {
-            tsElement.type = Variable;
-            teElement.type = Variable;
-            tsElement.id = 0;
-            teElement.id = 0;
-        }
-    #endif
+	Pattern* addPattern(Element* subject, Element* predicate, Element* object, int suffix, Element* ts, Element* te){
     	switch(suffix){
             case Suffix_Dot: case Suffix_Blank:{
-                Pattern* p = new Pattern(*subject, *predicate, *object
-            #ifdef TRDF_MODE
-                ,tsElement, teElement
-            #endif    
-                );
-                delete subject,predicate,object;
+                Pattern* p = new Pattern(*subject, *predicate, *object, *ts, *te);
+                delete subject, predicate, object, ts, te;
                 return p;
             }
             case Suffix_LArrow:{
                 usingCustomGrammar = true;
-                Pattern* p = new Pattern(*object, *predicate, *subject
-            #ifdef TRDF_MODE
-                ,tsElement, teElement
-            #endif    
-                );
+                Pattern* p = new Pattern(*object, *predicate, *subject, *ts, *te);
                 p->direction = IN;
-                delete subject,predicate,object;
+                delete subject,predicate,object, ts, te;
                 return p;
             }
             case Suffix_RArrow:{
                 usingCustomGrammar = true;
-                Pattern* p = new Pattern(*subject, *predicate, *object
-            #ifdef TRDF_MODE
-                ,tsElement, teElement
-            #endif    
-                );
-                delete subject,predicate,object;
+                Pattern* p = new Pattern(*subject, *predicate, *object, *ts, *te);
+                delete subject,predicate,object, ts, te;
                 return p;
             }
             default:{
                 printf("Unidentified pattern suffix!");
+                return NULL;
             }
         }
 	}
@@ -683,6 +602,22 @@ public:
         }else{
             result->type = Element::IRI;
         }
+        return result;
+	}
+
+    // Deal with Timestamp pattern element
+	Element* makeTimestampElement(char* datetimeValue){
+		Element* result = new Element();
+        std::string str = std::string(datetimeValue);
+        result->timestamp = wukong::time_tool::str2int(str);
+        result->type = Element::TimeStamp;
+        return result;
+	}
+
+    Element* makeInvalidTimestampElement(){
+		Element* result = new Element();
+        result->id = 0;
+        result->type = Element::Variable;
         return result;
 	}
 

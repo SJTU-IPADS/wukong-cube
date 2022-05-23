@@ -34,6 +34,7 @@
 ")" {return rparen;}
 "{" {return lcurly;}
 "}" {return rcurly;}
+(19[0-9]{2}|[2-9][0-9]{3})-((0(1|3|5|7|8)|10|12)-(0[1-9]|1[0-9]|2[0-9]|3[0-1])|(0(4|6|9)|11)-(0[1-9]|1[0-9]|2[0-9]|30)|(02)-(0[1-9]|1[0-9]|2[0-9]))T(0[0-9]|1[0-9]|2[0-3])(:[0-5][0-9]){2} {yylval.str = yytext; return datetime;}
 ":" {return colon;}
 "[" {return lbracket;}
 \[[ \t\n\r\f]*\] {return anon;}
@@ -57,7 +58,7 @@
 ">=" {return greater_or_equal;} 
 \"([^\"])+\" {yylval.str=yytext; return string_;}
 [?$][a-zA-Z0-9]+ {yylval.str=yytext; return variable;}
-\<[^\<\>\\\`\{\}\^\|\"]+\> {yylval.str=yytext; return iri;}
+\<[^\<\>\\\`\{\}\^\|\"T]+\> {yylval.str=yytext; return iri;}
 [a-zA-Z][a-zA-Z0-9]* {yylval.str=yytext; return identifier;}
 -?[0-9]+ {yylval.str = yytext;return integer;}
 -?([0-9]+\.[0-9]*)|\.[0-9]+ {yylval.str = yytext;return decimal;}

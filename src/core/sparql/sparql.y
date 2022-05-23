@@ -18,7 +18,6 @@ int yylex();
 void yyerror(std::string error)
 {
  std::cout<<error<<std::endl;
- exit(1);
 }
 
 %}
@@ -45,11 +44,11 @@ void yyerror(std::string error)
   lparen rparen lbracket rbracket larrow rarrow
   anon equal not_equal less less_or_equal greater greater_or_equal
   at type not_ or_ and_ plus_ minus_ mul_ div_
-  integer decimal double_ percent predicate time_interval
-  optional_ filter order_by limit offset asc desc truee_ falsee_ bound from snapshot/* newly defined symbol */
+  integer decimal double_ percent predicate
+  optional_ filter order_by limit offset asc desc truee_ falsee_ bound from snapshot datetime/* newly defined symbol */
 
 %type<choice> PATTERN_SUFFIX ORDER_CHOICE RELATIONAL_CHOICE ADDITIVE_CHOICE MULTIPLICATIVE_CHOICE UNARY_CHOICE 
-%type<str> identifier iri string_ variable time_interval
+%type<str> datetime identifier iri string_ variable 
 %type<str> integer decimal double_ /* will be converted to real number in the parser */
 %type<element> PATTERN_ELEMENT
 %type<filter> FILTER_NODE CONSTRAINT BUILTIN_CALL FUNC_CALL VALUE_LOGICAL 
@@ -101,17 +100,20 @@ PROJECTION_MODIFIER: identifier {parser->addProjectionModifier($1);}
 PROJECTION_GROUP: PROJECTION_NODE
                 | PROJECTION_NODE PROJECTION_GROUP
                 | mul_ {}
+;
 
 PROJECTION_NODE: variable {parser->addProjection($1);}
 ;
 
-FROM_CLAUSE: from snapshot iri {parser->parseFromSnapshot($3);}
-           | from time_interval {parser->parseFromTime($2);}
+FROM_CLAUSE: from snapshot less datetime greater {parser->parseFromSnapshot($4);}
+           | from lbracket datetime comma datetime rbracket {parser->parseFromTime($3, $5);}
            |
+;
 
 WHERE_CLAUSE: where PATTERN_GROUP {
     parser->registerPatternGroup($2);
 }
+;
 
 PATTERN_GROUP: lcurly PATTERN_LIST rcurly {$$ = $2;}
 ;
@@ -133,10 +135,10 @@ PATTERN_NODE: PATTERN {$$ = parser->makePatternNode(SPARQLParser::Type_Pattern,$
             | UNION_NODE {$$ = parser->makePatternNode(SPARQLParser::Type_Union,NULL,NULL,NULL,$1);}
 
 PATTERN: PATTERN_ELEMENT PATTERN_ELEMENT PATTERN_ELEMENT PATTERN_SUFFIX{
-    $$ = parser->addPattern($1,$2,$3,$4,NULL);
+    $$ = parser->addPattern($1,$2,$3,$4,parser->makeInvalidTimestampElement(),parser->makeInvalidTimestampElement());
 }
-       | time_interval PATTERN_ELEMENT PATTERN_ELEMENT PATTERN_ELEMENT PATTERN_SUFFIX{
-    $$ = parser->addPattern($2,$3,$4,$5,$1);
+       | lbracket PATTERN_ELEMENT comma PATTERN_ELEMENT rbracket PATTERN_ELEMENT PATTERN_ELEMENT PATTERN_ELEMENT PATTERN_SUFFIX{
+    $$ = parser->addPattern($6,$7,$8,$9,$2,$4);
 }
 
 
@@ -155,6 +157,7 @@ PATTERN_ELEMENT: variable {$$=parser->makeVariableElement($1);}
                | string_ type iri {$$=parser->makeStringElement($1,NULL,$3);}
                | predicate {$$=parser->makePredicateElement();}
                | anon {$$=parser->makeAnonElement();}
+               | datetime {$$=parser->makeTimestampElement($1);}
 
 OPTIONAL_NODE: optional_ PATTERN_GROUP OPTIONAL_NODE_SUFFIX {
     $$ = $2;
