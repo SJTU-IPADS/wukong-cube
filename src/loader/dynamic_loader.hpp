@@ -55,8 +55,8 @@ namespace wukong {
 class DynamicLoader {
 private:
     int sid;
-    StringServer* str_server;
-    DynamicGStore* gstore;
+    StringMapping *str_mapping;
+    DynamicGStore *gstore;
 
     inline std::vector<std::string> list_files(std::string dname, std::string prefix) {
         if (boost::starts_with(dname, "hdfs:")) {
@@ -104,14 +104,14 @@ private:
     }
 
     bool check_sid(const sid_t id) {
-        if (str_server->exist(id))
+        if (str_mapping->exist(id))
             return true;
 
         logstream(LOG_WARNING) << "Unknown SID: " << id << LOG_endl;
         return false;
     }
 
-    void dynamic_load_mappings(std::string dname) {
+    void dynamic_load_mappings(int tid, std::string dname) {
         std::unordered_set<sid_t> dynamic_loaded_preds;
 
         DIR* dir = opendir(dname.c_str());
@@ -133,19 +133,20 @@ private:
                 std::string str;
                 sid_t id;
                 while (file >> str >> id) {
-                    if (str_server->exist(str)) {
-                        id2id[id] = str_server->str2id(str);
+                    auto map_result = str_mapping->str2id(tid, str);
+                    if (map_result.first) {
+                        id2id[id] = map_result.second;
                     } else {
                         if (boost::ends_with(fname, "/str_index")) {
-                            id2id[id] = str_server->next_index_id++;
+                            id2id[id] = str_mapping->next_index_id ++;
                             // if this is a new pred, we should create a new segment for it
                             dynamic_loaded_preds.insert(id2id[id]);
                         } else {
-                            id2id[id] = str_server->next_normal_id++;
+                            id2id[id] = str_mapping->next_normal_id++;
                         }
 
                         // add a new string-ID (bi-direction) pair to string server
-                        str_server->add(str, id2id[id]);
+                        str_mapping->add(str, id2id[id]);
                     }
                 }
                 file.close();
@@ -157,13 +158,14 @@ private:
     }
 
 public:
-    DynamicLoader(int sid, StringServer* str_server, DynamicGStore* gstore)
-        : sid(sid), str_server(str_server), gstore(gstore) {}
+    DynamicLoader(int sid, StringMapping *str_mapping, DynamicGStore *gstore)
+        : sid(sid), str_mapping(str_mapping), gstore(gstore) { }
 
-    int64_t dynamic_load_data(std::string dname, bool check_dup) {
+    // FIXME: if the DynamicLoader will be used in StringCache?
+    int64_t dynamic_load_data(int tid, std::string dname, bool check_dup) {
         uint64_t start, end;
         // step 1: load ID-mapping files and construct id2id mapping
-        dynamic_load_mappings(dname);
+        dynamic_load_mappings(tid, dname);
 
         // step 2: list files to load
 

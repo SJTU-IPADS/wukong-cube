@@ -25,12 +25,12 @@
 
 #include <boost/mpi.hpp>
 
-#include "client/proxy.hpp"
+#include "client/rpc_proxy.hpp"
+#include "client/console_proxy.hpp"
 #include "client/console.hpp"
 
 #include "core/common/conflict.hpp"
 #include "core/common/config.hpp"
-#include "core/common/string_server.hpp"
 #include "core/common/bind.hpp"
 #include "core/common/rdma.hpp"
 #include "core/common/mem.hpp"
@@ -44,6 +44,9 @@
 
 #include "optimizer/stats.hpp"
 
+#include "stringserver/string_server.hpp"
+#include "stringserver/string_cache.hpp"
+
 // utils
 #include "utils/unit.hpp"
 #include "utils/logger2.hpp"
@@ -56,6 +59,37 @@
 #include "gpu/gpu_cache.hpp"
 #include "gpu/gpu_stream.hpp"
 
+#endif  // end of USE_GPU
+
+void *engine_thread(void *arg)
+{
+    wukong::Engine *engine = (wukong::Engine *)arg;
+    if (wukong::enable_binding && wukong::core_bindings.count(engine->tid) != 0)
+        wukong::bind_to_core(wukong::core_bindings[engine->tid]);
+    else
+        wukong::bind_to_core(wukong::default_bindings[engine->tid % wukong::num_cores]);
+    engine->run();
+}
+
+void *proxy_thread(void *arg)
+{
+    wukong::Proxy *proxy = (wukong::Proxy *)arg;
+    if (wukong::enable_binding && wukong::core_bindings.count(proxy->get_tid()) != 0)
+        wukong::bind_to_core(wukong::core_bindings[proxy->get_tid()]);
+    else
+        wukong::bind_to_core(wukong::default_bindings[proxy->get_tid() % wukong::num_cores]);
+
+    if(proxy->get_tid() == 0){
+
+        // run the builtin console
+        wukong::run_console((wukong::ConsoleProxy*) proxy);
+    } else{
+        wukong::RPCProxy* rpc_proxy = (wukong::RPCProxy*) proxy;
+        rpc_proxy->serve();
+    }
+}
+
+#ifdef USE_GPU
 void *agent_thread(void *arg)
 {
     wukong::GPUAgent *agent = (wukong::GPUAgent *)arg;
@@ -67,29 +101,6 @@ void *agent_thread(void *arg)
     agent->run();
 }
 #endif  // end of USE_GPU
-
-void *engine_thread(void *arg)
-{
-    wukong::Engine *engine = (wukong::Engine *)arg;
-    if (wukong::enable_binding && wukong::core_bindings.count(engine->tid) != 0)
-        wukong::bind_to_core(wukong::core_bindings[engine->tid]);
-    else
-        wukong::bind_to_core(wukong::default_bindings[engine->tid % wukong::num_cores]);
-
-    engine->run();
-}
-
-void *proxy_thread(void *arg)
-{
-    wukong::Proxy *proxy = (wukong::Proxy *)arg;
-    if (wukong::enable_binding && wukong::core_bindings.count(proxy->tid) != 0)
-        wukong::bind_to_core(wukong::core_bindings[proxy->tid]);
-    else
-        wukong::bind_to_core(wukong::default_bindings[proxy->tid % wukong::num_cores]);
-
-    // run the builtin console
-    wukong::run_console(proxy);
-}
 
 static void
 usage(char *fn)
@@ -113,8 +124,6 @@ void print_badge(){
 int
 main(int argc, char *argv[])
 {
-    wukong::conflict_detector();
-
     boost::mpi::environment env(argc, argv);
     boost::mpi::communicator world;
     int sid = world.rank(); // server ID
@@ -129,6 +138,9 @@ main(int argc, char *argv[])
 
     // load global configs
     wukong::load_config(std::string(argv[1]), world.size());
+
+    // detect and report conflicts
+    wukong::conflict_detector();
 
     // set the address file of host/cluster
     std::string host_fname = std::string(argv[2]);
@@ -196,7 +208,12 @@ main(int argc, char *argv[])
                                   wukong::Global::num_servers, wukong::Global::num_proxies);
 
     // load string server (read-only, shared by all proxies and all engines)
-    wukong::StringServer str_server(wukong::Global::input_folder);
+    wukong::StringMapping* str_mapping;
+    if(wukong::Global::enable_standalone_str_server) {
+        str_mapping = new wukong::StringCache(wukong::Global::input_folder);
+    } else {
+        str_mapping = new wukong::StringServer(wukong::Global::input_folder);
+    }
 
     // load RDF graph (shared by all engines and proxies)
     wukong::KVMem kv_mem = {
@@ -231,13 +248,17 @@ main(int argc, char *argv[])
     // create proxies and engines
     for (int tid = 0; tid < wukong::Global::num_proxies + wukong::Global::num_engines; tid++) {
         wukong::Adaptor *adaptor = new wukong::Adaptor(tid, tcp_adaptor, rdma_adaptor);
-
         // TID: proxy = [0, #proxies), engine = [#proxies, #proxies + #engines)
         if (tid < wukong::Global::num_proxies) {
-            wukong::Proxy *proxy = new wukong::Proxy(sid, tid, &str_server, dgraph, adaptor, &stats);
+            std::shared_ptr<wukong::Proxy> proxy;
+            if(tid == 0){
+                proxy = std::shared_ptr<wukong::Proxy>(new wukong::ConsoleProxy(sid, tid, str_mapping, dgraph, adaptor, &stats));
+            }else{
+                proxy = std::shared_ptr<wukong::Proxy>(new wukong::RPCProxy(sid, tid, host_fname, str_mapping, dgraph, adaptor, &stats));
+            }
             wukong::proxies.push_back(proxy);
         } else {
-            wukong::Engine *engine = new wukong::Engine(sid, tid, &str_server, dgraph, adaptor);
+            wukong::Engine *engine = new wukong::Engine(sid, tid, str_mapping, dgraph, adaptor);
             wukong::engines.push_back(engine);
         }
     }
@@ -246,12 +267,14 @@ main(int argc, char *argv[])
     pthread_t *threads  = new pthread_t[wukong::Global::num_threads];
     for (int tid = 0; tid < wukong::Global::num_proxies + wukong::Global::num_engines; tid++) {
         // TID: proxy = [0, #proxies), engine = [#proxies, #proxies + #engines)
-        if (tid < wukong::Global::num_proxies)
+        if (tid < wukong::Global::num_proxies){
             pthread_create(&(threads[tid]), NULL, proxy_thread,
-                           (void *)wukong::proxies[tid]);
-        else
+                        (void *)wukong::proxies[tid].get());
+        }
+        else{
             pthread_create(&(threads[tid]), NULL, engine_thread,
-                           (void *)wukong::engines[tid - wukong::Global::num_proxies]);
+                        (void *)wukong::engines[tid - wukong::Global::num_proxies]);
+        }
     }
 
 #ifdef USE_GPU

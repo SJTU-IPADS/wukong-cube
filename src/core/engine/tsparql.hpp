@@ -36,7 +36,6 @@
 #include "core/common/coder.hpp"
 #include "core/common/errors.hpp"
 #include "core/common/global.hpp"
-#include "core/common/string_server.hpp"
 #include "core/common/type.hpp"
 #include "core/common/bind.hpp"
 
