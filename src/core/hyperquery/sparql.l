@@ -1,4 +1,6 @@
 %option yylineno
+%option reentrant bison-bridge bison-locations
+%option noyywrap
 
 %{
 #include <stdio.h>
@@ -48,22 +50,11 @@
 "<=" {return less_or_equal;} 
 ">" {return greater;} 
 ">=" {return greater_or_equal;} 
-\"([^\"])+\" {yylval.str=yytext; return string_;}
-[?$][a-zA-Z0-9_]+ {yylval.str=yytext; return variable;}
-\<[^\<\>\\\`\{\}\^\|\"]+\> {yylval.str=yytext; return iri;}
-[a-zA-Z][a-zA-Z0-9]* {yylval.str=yytext; return identifier;}
--?[0-9]+ {yylval.str = yytext;return integer;}
--?([0-9]+\.[0-9]*)|\.[0-9]+ {yylval.str = yytext;return decimal;}
+\"([^\"])+\" {yylval->str=yytext; return string_;}
+[?$][a-zA-Z0-9_]+ {yylval->str=yytext; return variable;}
+\<[^\<\>\\\`\{\}\^\|\"]+\> {yylval->str=yytext; return iri;}
+[a-zA-Z][a-zA-Z0-9]* {yylval->str=yytext; return identifier;}
+-?[0-9]+ {yylval->str = yytext;return integer;}
+-?([0-9]+\.[0-9]*)|\.[0-9]+ {yylval->str = yytext;return decimal;}
 
 %%
-
-int yywrap(void) {
-    BEGIN INITIAL;
-    return 1;
-}
-
-void yyerror(std::string error) {
-    yywrap();
-    logstream(LOG_ERROR) << "line " << yylineno << ": " << error << LOG_endl;
-    throw wukong::WukongException(wukong::SYNTAX_ERROR);
-}

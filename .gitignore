@@ -2,7 +2,7 @@
 *~
 *.exe
 *.swp
-*.yy.c
+*.yy.*
 *.tab*
 *output*
 build/

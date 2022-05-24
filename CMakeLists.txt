@@ -114,11 +114,11 @@ execute_process(
 )
 if(TRDF_MODE)
   execute_process(
-    COMMAND flex -o ${PARSER_DIR}/lex.yy.c ${PARSER_DIR}/sparql_time.l
+    COMMAND flex -R --header-file=${PARSER_DIR}/lex.yy.h -o ${PARSER_DIR}/lex.yy.c ${PARSER_DIR}/sparql_time.l
   )
 else()
   execute_process(
-    COMMAND flex -o ${PARSER_DIR}/lex.yy.c ${PARSER_DIR}/sparql.l
+    COMMAND flex -R --header-file=${PARSER_DIR}/lex.yy.h -o ${PARSER_DIR}/lex.yy.c ${PARSER_DIR}/sparql.l
   )
 endif(TRDF_MODE)
 

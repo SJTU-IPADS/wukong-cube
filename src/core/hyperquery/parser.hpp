@@ -56,14 +56,14 @@
 // utils
 #include "utils/assertion.hpp"
 
-extern int yyparse(void);
-extern void yyrestart(FILE * input_file);
+// lexer && parser
+#include "sparql.tab.h"
+#include "lex.yy.h"
+
+extern int yyparse(yyscan_t scanner, wukong::HyperParser* parser);
 extern int yylineno;
-extern FILE *yyin;
 
 namespace wukong {
-class HyperParser;
-extern HyperParser* parser;
 
 // Read a stream into a string
 static std::string read_input(std::istream &in) {
@@ -95,6 +95,8 @@ static std::string read_input(std::istream &in) {
  */
 class Parser {
 private:
+    HyperParser* parser;
+    
     // place holder of pattern type (a special group of objects)
     const static ssid_t PTYPE_PH = std::numeric_limits<ssid_t>::min() + 1;
     const static ssid_t DUMMY_ID = std::numeric_limits<ssid_t>::min();
@@ -289,26 +291,34 @@ public:
     // the stat of query parsing
     std::string strerror;
 
-    Parser(StringServer *_ss): str_server(_ss) { }
+    Parser(StringServer *_ss): str_server(_ss) {
+        parser = new HyperParser();
+    }
 
     /// a single query
     int parse(std::string fname, HyperQuery &hq) {
-        yyin = fopen(fname.c_str(),"r");
-        if (!yyin) {
-            return FILE_NOT_FOUND; // file not found
+        FILE *in = fopen(fname.c_str(),"r");
+        if (!in) return FILE_NOT_FOUND; // file not found
+
+        // define and init scanner
+        yyscan_t scanner;
+        if (yylex_init(&scanner)) {
+            logstream(LOG_ERROR) << "Failed to init a HYPER scanner: " << LOG_endl;
+            return SYNTAX_ERROR;
         }
-        parser->clear();
-        yyrestart(yyin);
-        yylineno= 1;
+        yyrestart(in, scanner);
+
         try {
-            yyparse();
+            parser->clear();
+            yyparse(scanner, parser);
             transfer(*parser, hq);
         } catch (const HyperParser::ParserException &e) {
             logstream(LOG_ERROR) << "Failed to parse a HYPER query: "
                                  << e.message << LOG_endl;
             return SYNTAX_ERROR;
         }
-        fclose(yyin);
+        fclose(in);
+        yylex_destroy(scanner);
 
         logstream(LOG_INFO) << "Parsing a HYPER query is done." << LOG_endl;
         return SUCCESS;
@@ -316,22 +326,29 @@ public:
 
     /// a query template
     int parse_template(std::string fname, HyperQuery_Template &hqt) {
-        yyin = fopen(fname.c_str(),"r");
-        if (!yyin) {
-            return FILE_NOT_FOUND; // file not found
+        // open file
+        FILE *in = fopen(fname.c_str(),"r");
+        if (!in) return FILE_NOT_FOUND; // file not found
+
+        // define and init scanner
+        yyscan_t scanner;
+        if (yylex_init(&scanner)) {
+            logstream(LOG_ERROR) << "Failed to init a HYPER scanner: " << LOG_endl;
+            return SYNTAX_ERROR;
         }
-        parser->clear();
-        yyrestart(yyin);
-        yylineno= 1;
+        yyrestart(in, scanner);
+
         try {
-            yyparse();
+            parser->clear();
+            yyparse(scanner, parser);
             transfer_template(*parser, hqt);
         } catch (const HyperParser::ParserException &e) {
             logstream(LOG_ERROR) << "Failed to parse a HYPER query: "
                                  << e.message << LOG_endl;
             return SYNTAX_ERROR;
         }
-        fclose(yyin);
+        fclose(in);
+        yylex_destroy(scanner);
 
         logstream(LOG_INFO) << "Parsing a HYPER query template is done." << LOG_endl;
         return SUCCESS;

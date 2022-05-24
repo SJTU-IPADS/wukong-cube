@@ -871,21 +871,22 @@ public:
     std::vector<std::vector<uint64_t>> tpls_grp; // the candidates for random-constants
 
     HyperQuery instantiate(int seed) {
+        HyperQuery::PatternGroup new_patterns = pattern_group;
         for (int i = 0; i < tpls_pos.size(); i++) {
             auto pos = tpls_pos[i];
-            auto &pattern = pattern_group.patterns[pos.first];
+            auto &pattern = new_patterns.patterns[pos.first];
             switch (pattern.type)
             {
             // htid candidates
             case HyperQuery::GE:
                 ASSERT_EQ(pos.second, PT_OUTPUT);
-                pattern_group.patterns[pos.first].output_var =
+                new_patterns.patterns[pos.first].output_var =
                     tpls_grp[i][seed % tpls_grp[i].size()];
                 break;
             // vid candidates
             case HyperQuery::V2E: case HyperQuery::V2V:
                 ASSERT_EQ(pos.second, PT_INPUT);
-                pattern_group.patterns[pos.first].input_vids.push_back(
+                new_patterns.patterns[pos.first].input_vids.push_back(
                     tpls_grp[i][seed % tpls_grp[i].size()]
                 );
                 break;
@@ -893,7 +894,7 @@ public:
             case HyperQuery::E2V: case HyperQuery::E2E_ITSCT: 
             case HyperQuery::E2E_CT: case HyperQuery::E2E_IN:
                 ASSERT_EQ(pos.second, PT_INPUT);
-                pattern_group.patterns[pos.first].input_eids.push_back(
+                new_patterns.patterns[pos.first].input_eids.push_back(
                     tpls_grp[i][seed % tpls_grp[i].size()]
                 );
                 break;
@@ -902,7 +903,7 @@ public:
             }
         }
 
-        return HyperQuery(pattern_group, nvars, required_vars);
+        return HyperQuery(new_patterns, nvars, required_vars);
     }
 
     void print_hyper_template() {

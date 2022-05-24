@@ -11,15 +11,24 @@
 
 using namespace wukong;
 
-namespace wukong {
-    HyperParser* parser = new HyperParser();
+%}
+
+// parameters
+%locations
+%error-verbose
+%define api.pure full
+%lex-param   { yyscan_t scanner }
+%parse-param { yyscan_t scanner } {wukong::HyperParser* parser}
+
+%code requires {
+  typedef void* yyscan_t;
 }
 
-int yylex();
-void yyerror(std::string error);
+%code {
+  int yylex(YYSTYPE* yylvalp, YYLTYPE* yyllocp, yyscan_t scanner);
+  void yyerror(YYLTYPE* yyllocp, yyscan_t scanner, wukong::HyperParser* parser, const char* msg);
+}
 
-%}
-%error-verbose
 
 /*Identifier is something like where or select*/
 
@@ -141,3 +150,8 @@ PATTERN_TYPE: etype {$$=HyperParser::PatternType::GE;}
             | intersect_vertices {$$=HyperParser::PatternType::V2V;}
 
 %%
+void yyerror(YYLTYPE* yyllocp, void* scanner, wukong::HyperParser* parser, const char* msg) {
+  fprintf(stderr, "[line %d: column %d]: %s\n",
+                  yyllocp->first_line, yyllocp->first_column, msg);
+    throw wukong::WukongException(wukong::SYNTAX_ERROR);
+}
