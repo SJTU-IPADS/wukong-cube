@@ -49,6 +49,13 @@ using attr_t = boost::variant<int, double, float>;
 
 enum dir_t { IN = 0, OUT, CORUN }; // direction: IN=0, OUT=1, and optimization hints
 enum data_type { SID_t = 0, INT_t, FLOAT_t, DOUBLE_t, TIME_t };
+enum req_type { 
+    SPARQL_QUERY = 0, 
+    DYNAMIC_LOAD = 1, 
+    GSTORE_CHECK = 2,
+    SPARQL_HISTORY = 3, 
+    SSCACHE_REQ = 4 
+};
 
 struct triple_t {
     sid_t s; // subject

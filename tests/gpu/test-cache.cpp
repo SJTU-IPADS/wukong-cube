@@ -31,7 +31,7 @@
 #include "core/common/mem.hpp"
 #include "gpu/gpu_mem.hpp"
 #include "gpu/gpu_cache.hpp"
-#include "core/common/string_server.hpp"
+#include "stringserver/string_server.hpp"
 #include "core/store/dgraph.hpp"
 #include "client/console.hpp"
 #include "core/common/rdma.hpp"

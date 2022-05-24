@@ -26,7 +26,7 @@
 
 #include "core/network/adaptor.hpp"
 
-#include "core/sparql/query.hpp"
+#include "core/common/bundle.hpp"
 
 // utils
 #include "utils/logger2.hpp"
@@ -39,10 +39,10 @@ private:
     public:
         int sid;
         int tid;
-        Bundle bundle;
+        std::string msg;
 
-        Message(int sid, int tid, Bundle &bundle)
-            : sid(sid), tid(tid), bundle(bundle) { }
+        Message(int sid, int tid, std::string &msg)
+            : sid(sid), tid(tid), msg(std::move(msg)) { }
     };
 
     std::vector<Message> pending_msgs;
@@ -61,24 +61,30 @@ public:
         logstream(LOG_DEBUG) << "#" << tid << " "
                              << pending_msgs.size() << " pending msgs on engine." << LOG_endl;
         for (std::vector<Message>::iterator it = pending_msgs.begin(); it != pending_msgs.end();)
-            if (adaptor->send(it->sid, it->tid, it->bundle))
+            if (adaptor->send(it->sid, it->tid, it->msg))
                 it = pending_msgs.erase(it);
             else
                 ++it;
     }
 
     bool send_msg(Bundle &bundle, int dst_sid, int dst_tid) {
-        if (adaptor->send(dst_sid, dst_tid, bundle))
+        std::string msg = bundle.to_str();
+        if (adaptor->send(dst_sid, dst_tid, msg))
             return true;
 
         // failed to send, then stash the msg to avoid deadlock
-        pending_msgs.push_back(Message(dst_sid, dst_tid, bundle));
+        pending_msgs.push_back(Message(dst_sid, dst_tid, msg));
         return false;
     }
 
-    Bundle recv_msg() { return adaptor->recv(); }
+    Bundle recv_msg() { return Bundle(adaptor->recv()); }
 
-    bool tryrecv_msg(Bundle &bundle) { return adaptor->tryrecv(bundle); }
+    bool tryrecv_msg(Bundle &bundle) {
+        std::string msg;
+        if (!adaptor->tryrecv(msg)) return false;
+        bundle.init(msg);
+        return true;
+    }
 
 };
 

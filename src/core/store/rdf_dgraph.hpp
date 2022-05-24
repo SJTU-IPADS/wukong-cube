@@ -27,7 +27,6 @@
 #include <string>
 #include <vector>
 
-#include "core/common/string_server.hpp"
 #include "core/store/dgraph.hpp"
 
 namespace wukong {

@@ -37,11 +37,14 @@
 
 #include "core/common/errors.hpp"
 #include "core/common/type.hpp"
+#include "core/common/global.hpp"
 
 #include "core/store/vertex.hpp"
 
 // utils
+#include "utils/assertion.hpp"
 #include "utils/logger2.hpp"
+#include "utils/assertion.hpp"
 
 namespace wukong {
 
@@ -61,9 +64,9 @@ enum vstat { KNOWN_VAR = 0, UNKNOWN_VAR, CONST_VAR }; // variable stat
 
 
 // conversion between col and ext
-int col2ext(int col, int t) { return ((t << NBITS_COL) | col); }
-int ext2col(int ext) { return (ext & ((1 << NBITS_COL) - 1)); }
-int ext2type(int ext) { return ((ext >> NBITS_COL) & ((1 << NBITS_COL) - 1)); }
+static int col2ext(int col, int t) { return ((t << NBITS_COL) | col); }
+static int ext2col(int ext) { return (ext & ((1 << NBITS_COL) - 1)); }
+static int ext2type(int ext) { return ((ext >> NBITS_COL) & ((1 << NBITS_COL) - 1)); }
 
 /**
  * SPARQL Query
@@ -380,6 +383,7 @@ public:
         bool blind = false;
         int nvars = 0; // the number of variables
         std::vector<ssid_t> required_vars; // variables selected to return
+        std::vector<std::string> required_vars_name; // the name of variables selected to return
         std::vector<int> v2c_map; // from variable ID (vid) to column ID, index: vid, value: col
 
         // OPTIONAL
@@ -1079,8 +1083,8 @@ public:
 
 namespace boost {
 namespace serialization {
-char occupied = 0;
-char empty = 1;
+static char occupied = 0;
+static char empty = 1;
 
 template<class Archive>
 void save(Archive &ar, const wukong::SPARQLQuery::Pattern &t, unsigned int version) {
@@ -1304,119 +1308,3 @@ BOOST_CLASS_TRACKING(wukong::SPARQLQuery, boost::serialization::track_never);
 
 BOOST_CLASS_TRACKING(wukong::GStoreCheck, boost::serialization::track_never);
 BOOST_CLASS_TRACKING(wukong::RDFLoad, boost::serialization::track_never);
-
-namespace wukong {
-
-enum req_type { SPARQL_QUERY = 0, DYNAMIC_LOAD = 1, GSTORE_CHECK = 2, SPARQL_HISTORY = 3 };
-
-/**
- * Bundle to be sent by network, with data type labeled
- * Note this class does not use boost serialization
- */
-class Bundle {
-private:
-    friend class boost::serialization::access;
-    template <typename Archive>
-    void serialize(Archive &ar, const unsigned int version) {
-        ar & type;
-        ar & data;
-    }
-
-public:
-    req_type type;
-    std::string data;
-
-    Bundle() { }
-
-    Bundle(const req_type &t, const std::string &d): type(t), data(d) { }
-
-    Bundle(const Bundle &b): type(b.type), data(b.data) { }
-
-    Bundle(const SPARQLQuery &r): type(SPARQL_QUERY) {
-        std::stringstream ss;
-        boost::archive::binary_oarchive oa(ss);
-
-        oa << r;
-        data = ss.str();
-    }
-
-    Bundle(const RDFLoad &r): type(DYNAMIC_LOAD) {
-        std::stringstream ss;
-        boost::archive::binary_oarchive oa(ss);
-
-        oa << r;
-        data = ss.str();
-    }
-
-    Bundle(const GStoreCheck &r): type(GSTORE_CHECK) {
-        std::stringstream ss;
-        boost::archive::binary_oarchive oa(ss);
-
-        oa << r;
-        data = ss.str();
-    }
-
-    Bundle(const std::string str) { init(str); }
-
-    void init(const std::string str) {
-        memcpy(&type, str.c_str(), sizeof(req_type));
-        std::string d(str, sizeof(req_type), str.length() - sizeof(req_type));
-        data = d;
-    }
-
-    // SPARQLQuery command
-    SPARQLQuery get_sparql_query() const {
-        ASSERT(type == SPARQL_QUERY);
-
-        std::stringstream ss;
-        ss << data;
-
-        boost::archive::binary_iarchive ia(ss);
-        SPARQLQuery result;
-        ia >> result;
-        return result;
-    }
-
-    // RDFLoad command
-    RDFLoad get_rdf_load() const {
-        ASSERT(type == DYNAMIC_LOAD);
-
-        std::stringstream ss;
-        ss << data;
-
-        boost::archive::binary_iarchive ia(ss);
-        RDFLoad result;
-        ia >> result;
-        return result;
-    }
-
-    // GStoreCheck command
-    GStoreCheck get_gstore_check() const {
-        ASSERT(type == GSTORE_CHECK);
-
-        std::stringstream ss;
-        ss << data;
-
-        boost::archive::binary_iarchive ia(ss);
-        GStoreCheck result;
-        ia >> result;
-        return result;
-    }
-
-    std::string to_str() const {
-#if 1 // FIXME
-        char *c_str = new char[sizeof(req_type) + data.length()];
-        memcpy(c_str, &type, sizeof(req_type));
-        memcpy(c_str + sizeof(req_type), data.c_str(), data.length());
-        std::string str(c_str, sizeof(req_type) + data.length());
-        delete []c_str;
-        return str;
-#else
-        // FIXME: why not work? (Rong)
-        return std::string(std::to_string((uint64_t)type) + data);
-#endif
-    }
-
-};
-
-} // namespace wukong

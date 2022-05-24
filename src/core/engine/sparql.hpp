@@ -70,7 +70,7 @@ private:
     int sid;    // server id
     int tid;    // thread id
 
-    StringServer *str_server;
+    StringMapping *str_mapping;
     DGraph *graph;
     Coder *coder;
     Messenger *msgr;
@@ -1162,7 +1162,7 @@ private:
             switch (filter.type) {
             case SPARQLQuery::Filter::Type::Variable:
                 id = result.get_row_col(row, col);
-                return str_server->exist(id) ? str_server->id2str(id) : "";
+                return str_mapping->id2str(tid, id).second;
             case SPARQLQuery::Filter::Type::Literal:
                 return "\"" + filter.value + "\"";
             default:
@@ -1249,7 +1249,7 @@ private:
                 continue;
 
             int id = result.get_row_col(row, col);
-            std::string str = str_server->exist(id) ? str_server->id2str(id) : "";
+            std::string str = str_mapping->id2str(tid, id).second;
             if (!regex_match(str, IRI_pattern))
                 is_satisfy[row] = false;
         }
@@ -1280,7 +1280,7 @@ private:
                 continue;
 
             int id = result.get_row_col(row, col);
-            std::string str = str_server->exist(id) ? str_server->id2str(id) : "";
+            std::string str = str_mapping->id2str(tid, id).second;
             if (!regex_match(str, RDFLiteral_pattern))
                 is_satisfy[row] = false;
         }
@@ -1302,7 +1302,7 @@ private:
                 continue;
 
             int id = result.get_row_col(row, col);
-            std::string str = str_server->exist(id) ? str_server->id2str(id) : "";
+            std::string str = str_mapping->id2str(tid, id).second;
             if (str.front() != '\"' || str.back() != '\"')
                 logstream(LOG_ERROR) << "The first parameter of function regex must be string"
                                      << LOG_endl;
@@ -1377,18 +1377,19 @@ private:
 
     class Compare {
     private:
+        int tid;
         SPARQLQuery &query;
-        StringServer *str_server;
+        StringMapping *str_mapping;
     public:
-        Compare(SPARQLQuery &query, StringServer *str_server)
-            : query(query), str_server(str_server) { }
+        Compare(int tid, SPARQLQuery &query, StringMapping *str_mapping)
+            : tid(tid), query(query), str_mapping(str_mapping) { }
 
         bool operator()(const int* a, const int* b) {
             int cmp = 0;
             for (int i = 0; i < query.orders.size(); i ++) {
                 int col = query.result.var2col(query.orders[i].id);
-                std::string str_a = str_server->exist(a[col]) ? str_server->id2str(a[col]) : "";
-                std::string str_b = str_server->exist(a[col]) ? str_server->id2str(b[col]) : "";
+                std::string str_a = str_mapping->id2str(tid, a[col]).second;
+                std::string str_b = str_mapping->id2str(tid, b[col]).second;
                 cmp = str_a.compare(str_b);
                 if (cmp != 0) {
                     cmp = query.orders[i].descending ? -cmp : cmp;
@@ -1468,7 +1469,7 @@ out:
 
             // ORDER BY
             if (r.orders.size() > 0)
-                std::sort(table, table + new_size, Compare(r, str_server));
+                std::sort(table, table + new_size, Compare(tid, r, str_mapping));
 
             // write back data and delete **table
             for (int i = 0; i < new_size; i ++)
@@ -1547,9 +1548,9 @@ out:
 public:
     tbb::concurrent_queue<SPARQLQuery> prior_stage;
 
-    SPARQLEngine(int sid, int tid, StringServer *str_server,
+    SPARQLEngine(int sid, int tid, StringMapping *str_mapping,
                  DGraph *graph, Coder *coder, Messenger *msgr)
-        : sid(sid), tid(tid), str_server(str_server),
+        : sid(sid), tid(tid), str_mapping(str_mapping),
           graph(graph), coder(coder), msgr(msgr) {
 
         pthread_spin_init(&rmap_lock, 0);

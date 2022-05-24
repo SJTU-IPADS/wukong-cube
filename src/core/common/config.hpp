@@ -67,6 +67,13 @@ static bool set_immutable_config(std::string cfg_name, std::string value)
     } else if (cfg_name == "global_ctrl_port_base") {
         Global::ctrl_port_base = atoi(value.c_str());
         ASSERT(Global::ctrl_port_base > 0);
+    } else if (cfg_name == "global_server_port_base") {
+        Global::server_port_base = atoi(value.c_str());
+        ASSERT(Global::server_port_base > 0);
+    } else if (cfg_name == "global_enable_standalone_str_server") {
+        Global::enable_standalone_str_server = atoi(value.c_str());
+    } else if (cfg_name == "global_standalone_str_server_addr") {
+        Global::standalone_str_server_addr = value;
     } else if (cfg_name == "global_rdma_ctrl_port_base") {
         Global::rdma_ctrl_port_base = atoi(value.c_str());
         ASSERT(Global::rdma_ctrl_port_base > 0);
@@ -209,7 +216,6 @@ void reload_config(std::string str)
 void load_config(std::string fname, int nsrvs)
 {
     ASSERT(nsrvs > 0);
-    Global::num_servers = nsrvs;
 
     // load config file
     std::map<std::string, std::string> items;
@@ -222,6 +228,9 @@ void load_config(std::string fname, int nsrvs)
                                    << entry.first << ")" << LOG_endl;
         }
     }
+
+    // set the number of servers
+    Global::num_servers = nsrvs;
 
     // set the total number of threads
     Global::num_threads = Global::num_engines + Global::num_proxies;
@@ -257,6 +266,7 @@ void print_config(void)
     std::cout << "global_est_load_factor: "       << Global::est_load_factor       << LOG_endl;
     std::cout << "global_data_port_base: "        << Global::data_port_base        << LOG_endl;
     std::cout << "global_ctrl_port_base: "        << Global::ctrl_port_base        << LOG_endl;
+    std::cout << "global_server_port_base: "      << Global::server_port_base      << LOG_endl;
     std::cout << "global_rdma_buf_size_mb: "      << Global::rdma_buf_size_mb      << LOG_endl;
     std::cout << "global_rdma_rbf_size_mb: "      << Global::rdma_rbf_size_mb      << LOG_endl;
     std::cout << "global_use_rdma: "              << Global::use_rdma              << LOG_endl;
@@ -265,6 +275,8 @@ void print_config(void)
     std::cout << "global_stealing_pattern: "      << Global::stealing_pattern      << LOG_endl;
     std::cout << "global_rdma_threshold: "        << Global::rdma_threshold        << LOG_endl;
     std::cout << "global_mt_threshold: "          << Global::mt_threshold          << LOG_endl;
+    std::cout << "global_enable_standalone_str_server: "   << Global::enable_standalone_str_server   << LOG_endl;
+    std::cout << "global_standalone_str_server_addr: "     << Global::standalone_str_server_addr     << LOG_endl;
     std::cout << "global_silent: "                << Global::silent                << LOG_endl;
     std::cout << "global_enable_planner: "        << Global::enable_planner        << LOG_endl;
     std::cout << "global_generate_statistics: "   << Global::generate_statistics   << LOG_endl;

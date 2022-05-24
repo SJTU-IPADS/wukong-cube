@@ -29,6 +29,7 @@
 
 #include "core/common/global.hpp"
 #include "core/common/coder.hpp"
+#include "core/common/bundle.hpp"
 
 // gpu
 #include "gpu_utils.hpp"
@@ -264,9 +265,10 @@ public:
                 continue; // exhaust all queries
             }
 
-            Bundle bundle;
+            std::string msg;
             int sender = 0;
-            while (adaptor->tryrecv(bundle, sender)) {
+            while (adaptor->tryrecv(msg, sender)) {
+                Bundle bundle(msg);
                 if (bundle.type == SPARQL_QUERY) {
                     // To be fair, agent will handle sub-queries first, instead of a new job.
                     SPARQLQuery req = bundle.get_sparql_query();
