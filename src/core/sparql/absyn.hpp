@@ -48,7 +48,7 @@ public:
     /// An element in a graph pattern
     struct Element {
         /// Possible types
-        enum Type { Variable, Literal, IRI, Template, Predicate, TimeStamp };
+        enum Type { Variable, Literal, IRI, Template, Predicate, TimeStamp, Invalid };
         /// Possible sub-types for literals
         enum SubType { None, CustomLanguage, CustomType };
         /// The type
@@ -616,8 +616,7 @@ public:
 
     Element* makeInvalidTimestampElement(){
 		Element* result = new Element();
-        result->id = 0;
-        result->type = Element::Variable;
+        result->type = Element::Invalid;
         return result;
 	}
 

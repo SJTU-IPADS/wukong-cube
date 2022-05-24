@@ -99,7 +99,6 @@ public:
 
     enum TimeIntervalType { UNDEFINED, VALUE_VALUE, VALUE_VAR, VAR_VAR, VAR_VALUE };
 
-#ifdef TRDF_MODE
     class TimeIntervalPattern {
     private:
         friend class boost::serialization::access;
@@ -125,19 +124,9 @@ public:
         TimeIntervalPattern() : type(UNDEFINED) {}
 
         TimeIntervalPattern(int64_t ts_value, int64_t te_value, ssid_t ts_var, ssid_t te_var):
-            ts_value(ts_value), te_value(te_value), ts_var(ts_var), te_var(te_var) { 
-            if(ts_value != 0 && te_value != 0) {
-                type = VALUE_VALUE;
-            } else if(ts_var != 0 && te_var != 0) {
-                type = VAR_VAR;
-            } else if(ts_value != 0 && te_var != 0) {
-                type = VALUE_VAR;
-            } else if(ts_var != 0 && te_value != 0) {
-                type = VAR_VALUE;
-            } else { type = UNDEFINED; }
-        }
+              ts_value(ts_value), te_value(te_value), ts_var(ts_var), te_var(te_var)
+            {}
     };
-#endif
 
     class Pattern {
     private:
@@ -149,9 +138,7 @@ public:
         ssid_t object;
         dir_t direction;
 
-    #ifdef TRDF_MODE
         TimeIntervalPattern time_interval;
-    #endif
 
         char pred_type = (char)SID_t;
 
@@ -369,13 +356,11 @@ public:
         int attr_col_num = 0; // FIXME: why not no attr_row_num
         int status_code = SUCCESS;
 
-    #ifdef TRDF_MODE
         // time-related metadata
         int time_col_num = 0;
 
         // result table for timestamps
         std::vector<int64_t> time_res_table;
-    #endif
 
         bool blind = false;
         int nvars = 0; // the number of variables
@@ -397,9 +382,7 @@ public:
             result_table.clear();
             attr_res_table.clear();
             required_vars.clear();
-        #ifdef TRDF_MODE
             time_res_table.clear();
-        #endif
         }
 
         vstat var_stat(ssid_t vid) {
@@ -508,8 +491,7 @@ public:
             result_table.assign(update.begin(), update.end());
         }
 
-    #ifdef TRDF_MODE
-        // TIMT_T result (i.e., timestamp)
+        // time related functions
         void set_time_col_num(int n) {
             time_col_num = n;
         }
@@ -529,7 +511,6 @@ public:
         void dup_time_rows(std::vector<int64_t> &update){
             time_res_table.assign(update.begin(), update.end());
         }
-    #endif
 
         // ATTRIBUTE result (i.e., integer, float, and double)
         void set_attr_col_num(int n) { attr_col_num = n; }
@@ -578,7 +559,6 @@ public:
             result_table.swap(new_table);
         }
 
-    #ifdef TRDF_MODE
         // UNION
         // append a blank col to time result table without updating time_col_num and v2c_map
         void append_blank_time_col(int col) {
@@ -595,7 +575,6 @@ public:
 
             time_res_table.swap(new_table);
         }
-    #endif
 
         // For UNION queries, merge two result table into one
         void merge_result(SPARQLQuery::Result &r) {
@@ -603,13 +582,10 @@ public:
             nvars = r.nvars;
             v2c_map.resize(r.nvars, NO_RESULT);
             std::vector<int> col_map(r.nvars, -1);  // idx: my_col, value: your_col
-        #ifdef TRDF_MODE
             std::vector<int> time_col_map(r.nvars, -1);  // idx: my_col, value: your_col
-        #endif
             for (int i = 0; i < r.v2c_map.size(); i++) {
                 ssid_t vid = - (i + 1);
                 data_type type = r.var_type(vid);
-            #ifdef TRDF_MODE
                 if(type == TIME_t) {
                     if (v2c_map[i] == NO_RESULT && r.v2c_map[i] != NO_RESULT) {
                         append_blank_time_col(time_col_num);
@@ -624,7 +600,6 @@ public:
                     }
                     continue;
                 }
-            #endif
                 if (v2c_map[i] == NO_RESULT && r.v2c_map[i] != NO_RESULT) {
                     append_blank_col(col_num);
 
@@ -653,7 +628,6 @@ public:
                 }
             }
 
-        #ifdef TRDF_MODE
             time_res_table.reserve(time_col_num * row_num);
             for (int i = 0; i < r.row_num; i++) {
                 for (int j = 0; j < time_col_num; j++) {
@@ -663,7 +637,6 @@ public:
                         time_res_table.push_back(r.time_res_table[i * r.time_col_num + time_col_map[j]]);
                 }
             }
-        #endif
 
             // update attribute result table
             ASSERT_ERROR_CODE(r.attr_col_num == 0, UNSUPPORT_UNION);
@@ -674,9 +647,7 @@ public:
             // NOTE: all sub-jobs have the same v2c_map, ncols, and attr_ncols
             v2c_map = r.v2c_map;
             col_num = r.col_num;
-        #ifdef TRDF_MODE
             time_col_num = r.time_col_num;
-        #endif
             attr_col_num = r.attr_col_num;
             row_num += r.row_num; // add rows
 
@@ -689,12 +660,10 @@ public:
                                 r.result_table.begin(),
                                 r.result_table.end());
 
-        #ifdef TRDF_MODE
             ASSERT((time_col_num * row_num) == (time_res_table.size() + r.time_res_table.size()));
             time_res_table.insert(time_res_table.end(),
                                 r.time_res_table.begin(),
                                 r.time_res_table.end());
-        #endif
 
             ASSERT((attr_col_num * row_num) == (attr_res_table.size() + r.attr_res_table.size()));
             attr_res_table.insert(attr_res_table.end(),
@@ -713,10 +682,8 @@ public:
     DeviceType dev_type = CPU;
     SubJobType job_type = FULL_JOB;
 
-#ifdef TRDF_MODE
     int64_t ts = TIMESTAMP_MIN; // start timestamp after keyword FROM
     int64_t te = TIMESTAMP_MAX; // end timestamp after keyword FROM
-#endif
 
     int priority = 0;
 
@@ -871,10 +838,8 @@ public:
             mt_factor = r.mt_factor;
         }
         result = r.result;
-    #ifdef TRDF_MODE
         ts = r.ts;
         te = r.te;
-    #endif
         result.blind = false;
     }
 
@@ -1089,9 +1054,7 @@ void save(Archive &ar, const wukong::SPARQLQuery::Pattern &t, unsigned int versi
     ar << t.object;
     ar << t.direction;
     ar << t.pred_type;
-#ifdef TRDF_MODE
     ar << t.time_interval;
-#endif
 }
 
 template<class Archive>
@@ -1101,9 +1064,7 @@ void load(Archive &ar, wukong::SPARQLQuery::Pattern &t, unsigned int version) {
     ar >> t.object;
     ar >> t.direction;
     ar >> t.pred_type;
-#ifdef TRDF_MODE
     ar >> t.time_interval;
-#endif
 }
 
 template<class Archive>
@@ -1169,10 +1130,8 @@ void save(Archive &ar, const wukong::SPARQLQuery::Result &t, unsigned int versio
 #ifdef USE_GPU
     ar << t.gpu;
 #endif
-#ifdef TRDF_MODE
     ar << t.time_col_num;
     ar << t.time_res_table;
-#endif
 }
 
 template<class Archive>
@@ -1195,10 +1154,8 @@ void load(Archive & ar, wukong::SPARQLQuery::Result &t, unsigned int version) {
 #ifdef USE_GPU
     ar >> t.gpu;
 #endif
-#ifdef TRDF_MODE
     ar >> t.time_col_num;
     ar >> t.time_res_table;
-#endif
 }
 
 template<class Archive>
@@ -1224,10 +1181,8 @@ void save(Archive & ar, const wukong::SPARQLQuery &t, unsigned int version) {
     ar << t.offset;
     ar << t.distinct;
     ar << t.pattern_group;
-#ifdef TRDF_MODE
     ar << t.ts;
     ar << t.te;
-#endif
     if (t.orders.size() > 0) {
         ar << occupied;
         ar << t.orders;
@@ -1261,10 +1216,8 @@ void load(Archive & ar, wukong::SPARQLQuery &t, unsigned int version) {
     ar >> t.offset;
     ar >> t.distinct;
     ar >> t.pattern_group;
-#ifdef TRDF_MODE
     ar >> t.ts;
     ar >> t.te;
-#endif
     ar >> temp;
     if (temp == occupied) ar >> t.orders;
     ar >> t.result;

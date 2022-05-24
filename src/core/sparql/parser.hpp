@@ -56,6 +56,7 @@
 #include "utils/assertion.hpp"
 
 extern int yyparse(void);
+extern void yyrestart(FILE * input_file);
 extern FILE *yyin;
 
 namespace wukong {
@@ -164,6 +165,28 @@ private:
         }
     }
 
+    void transfer_interval_type(SPARQLQuery::TimeIntervalPattern& pat, SPARQLParser::Element::Type ts_type, SPARQLParser::Element::Type te_type) {
+        switch (const_pair(ts_type, te_type)) {
+        case const_pair(SPARQLParser::Element::TimeStamp, SPARQLParser::Element::TimeStamp):
+            pat.type = SPARQLQuery::TimeIntervalType::VALUE_VALUE;
+            break;
+        case const_pair(SPARQLParser::Element::TimeStamp, SPARQLParser::Element::Variable):
+            pat.type = SPARQLQuery::TimeIntervalType::VALUE_VAR;
+            break;
+        case const_pair(SPARQLParser::Element::Variable, SPARQLParser::Element::TimeStamp):
+            pat.type = SPARQLQuery::TimeIntervalType::VAR_VALUE;
+            break;
+        case const_pair(SPARQLParser::Element::Variable, SPARQLParser::Element::Variable):
+            pat.type = SPARQLQuery::TimeIntervalType::VAR_VAR;
+            break;
+        case const_pair(SPARQLParser::Element::Invalid, SPARQLParser::Element::Invalid):
+            pat.type = SPARQLQuery::TimeIntervalType::UNDEFINED;
+            break;
+        default:
+            ASSERT_ERROR_CODE(false, UNKNOWN_PATTERN);
+        }
+    }
+
     /// SPARQLParser::PatternGroup to SPARQLQuery::PatternGroup
     void transfer_pg(SPARQLParser::PatternGroup &src, SPARQLQuery::PatternGroup &dst) {
         // Patterns
@@ -175,21 +198,8 @@ private:
 
             SPARQLQuery::Pattern pattern(subject, predicate, direction, object);
 
-        #ifdef TRDF_MODE
-            int64_t ts_value = 0, te_value = 0;
-            ssid_t ts_var = 0, te_var = 0;
-            if(p.ts.type == SPARQLParser::Element::TimeStamp) {
-                ts_value = p.ts.timestamp;
-            } else {
-                ts_var = transfer_element(p.ts);
-            }
-            if(p.te.type == SPARQLParser::Element::TimeStamp) {
-                te_value = p.te.timestamp;
-            } else {
-                te_var = transfer_element(p.te);
-            }
-            pattern.time_interval = SPARQLQuery::TimeIntervalPattern(ts_value, te_value, ts_var, te_var);
-        #endif
+            pattern.time_interval = SPARQLQuery::TimeIntervalPattern(p.ts.timestamp, p.te.timestamp, p.ts.id, p.te.id);
+            transfer_interval_type(pattern.time_interval, p.ts.type, p.te.type);
 
             pattern.pred_type = str_server->pid2type[predicate];
             if ((pattern.pred_type != (char)SID_t) && !Global::enable_vattr) {
@@ -223,10 +233,8 @@ private:
     }
 
     void transfer(const SPARQLParser &sp, SPARQLQuery &sq) {
-    #ifdef TRDF_MODE
         sq.ts = sp.ts;
         sq.te = sp.te;
-    #endif
 
         // query type
         sq.q_type = static_cast<SPARQLQuery::QueryType>(sp.getQueryType());
@@ -292,22 +300,9 @@ private:
 
             SPARQLQuery::Pattern pattern(subject, predicate, direction, object);
 
-        #ifdef TRDF_MODE
-            int64_t ts_value = 0, te_value = 0;
-            ssid_t ts_var = 0, te_var = 0;
-            if(p.ts.type == SPARQLParser::Element::TimeStamp) {
-                ts_value = p.ts.timestamp;
-            } else {
-                ts_var = transfer_element(p.ts);
-            }
-            if(p.te.type == SPARQLParser::Element::TimeStamp) {
-                te_value = p.te.timestamp;
-            } else {
-                te_var = transfer_element(p.te);
-            }
-            pattern.time_interval = SPARQLQuery::TimeIntervalPattern(ts_value, te_value, ts_var, te_var);
-        #endif
-
+            pattern.time_interval = SPARQLQuery::TimeIntervalPattern(p.ts.timestamp, p.te.timestamp, p.ts.id, p.te.id);
+            transfer_interval_type(pattern.time_interval, p.ts.type, p.te.type);
+            
             // template pattern
             if (subject == PTYPE_PH) {
                 sqt.ptypes_str.push_back("<" + p.subject.value + ">"); // IRI
@@ -354,6 +349,7 @@ public:
         }
         parser->clear();
         try {
+            yyrestart(yyin);
             yyparse();
             transfer(*parser, sq);
         } catch (const SPARQLParser::ParserException &e) {
@@ -383,6 +379,7 @@ public:
         }
         parser->clear();
         try {
+            yyrestart(yyin);
             yyparse();
             transfer_template(*parser, sqt);
         } catch (const SPARQLParser::ParserException &e) {

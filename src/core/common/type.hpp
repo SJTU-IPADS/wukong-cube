@@ -33,16 +33,15 @@ namespace wukong {
 using sid_t = uint64_t;  // data type for string-id
 using ssid_t = int64_t;  // signed string id
 #define BLANK_ID UINT64_MAX
-
 #else
 
 using sid_t = uint32_t;  // data type for string-id
 using ssid_t = int32_t;  // signed string id
 #define BLANK_ID UINT32_MAX
+#endif
+
 #define TIMESTAMP_MAX INT64_MAX
 #define TIMESTAMP_MIN INT64_MIN
-
-#endif
 
 //attr_t unions int, double, float
 using attr_t = boost::variant<int, double, float>;
