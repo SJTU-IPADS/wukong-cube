@@ -40,8 +40,8 @@ using ssid_t = int32_t;  // signed string id
 #define BLANK_ID UINT32_MAX
 #endif
 
-#define TIMESTAMP_MAX INT64_MAX
-#define TIMESTAMP_MIN INT64_MIN
+#define TIMESTAMP_MAX (1l << 47) - 1
+#define TIMESTAMP_MIN (1l << 47)
 
 //attr_t unions int, double, float
 using attr_t = boost::variant<int, double, float>;

@@ -71,11 +71,11 @@ class RDFGraph : public DGraph {
                 for (uint64_t e = 0; e < sz; e++) {
                     tbb_edge_hash_map::accessor a;
                     tidx_map.insert(a, this->gstore->values[off + e].val);
-                #if TRDF_MODE
-                    a->second.push_back(edge_t(vid, this->gstore->values[off + e].ts, this->gstore->values[off + e].te));
-                #else
+#if TRDF_MODE
+                    a->second.push_back(edge_t(vid, this->gstore->values[off + e].get_ts(), this->gstore->values[off + e].get_te()));
+#else
                     a->second.push_back(edge_t(vid));
-                #endif
+#endif
 #ifdef VERSATILE
                     t_set.insert(this->gstore->values[off + e].val);  // collect all local types
 #endif

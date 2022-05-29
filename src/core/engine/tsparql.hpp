@@ -163,8 +163,8 @@ private:
         // edge timestamp
         int64_t idxTS, idxTE;
         if (ts_vstat != UNDEFINED_UNDEFINED) {
-            idxTS = edge.ts;
-            idxTE = edge.te;
+            idxTS = edge.get_ts();
+            idxTE = edge.get_te();
         }
         if (ts_vstat == UNDEFINED_UNDEFINED) {
             res.append_row_to(row_idx, updated_result_table);

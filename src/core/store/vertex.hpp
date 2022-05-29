@@ -183,11 +183,20 @@ struct edge_t {
     int val;  // vertex ID
 
 #ifdef TRDF_MODE
-    int64_t ts;  // start timestamp
-    int64_t te;  // end timestamp
+    int ts_high; // high 32-bit of start timestamp
+    int ts_te_low; // low 16-bit of start timestamp & low 16-bit of end timestamp
+    int te_high; // high 32-bit of end timestamp
+
+    int64_t get_ts() const {
+        return ((int64_t)ts_high << 32 >> 16) + ((ts_te_low >> 16) & UINT16_MAX);
+    }
+
+    int64_t get_te() const {
+        return ((int64_t)te_high << 32 >> 16) + (ts_te_low & UINT16_MAX);
+    }
 
     bool valid(int64_t _ts, int64_t _te) const {
-        bool rev = ((_ts <= _te) && (ts <= te) && (_ts <= te && _te >= ts)) || (_ts == TIMESTAMP_MIN && _te == TIMESTAMP_MAX);
+        bool rev = ((_ts <= _te) && (get_ts() <= get_te()) && (_ts <= get_te() && _te >= get_ts())) || (_ts == TIMESTAMP_MIN && _te == TIMESTAMP_MAX);
         return rev;
     }
 
@@ -195,7 +204,11 @@ struct edge_t {
 #if USE_GPU
     __host__ __device__
 #endif
-    edge_t(sid_t id, int64_t ts, int64_t te): val(id), ts(ts), te(te) {}
+    edge_t(sid_t id, int64_t _ts, int64_t _te): val(id) {
+        ts_high = (_ts >> 16) & UINT32_MAX;
+        te_high = (_te >> 16) & UINT32_MAX;
+        ts_te_low = ((_ts << 16) & UINT32_MAX) + (_te & UINT16_MAX);
+    }
     // clang-format on
 #endif
 
@@ -209,17 +222,19 @@ struct edge_t {
     // clang-format on
 
     edge_t(const edge_t& edge) : val(edge.val) {
-    #ifdef TRDF_MODE
-        ts = edge.ts;
-        te = edge.te;
-    #endif
+#ifdef TRDF_MODE
+        ts_high = edge.ts_high;
+        te_high = edge.te_high;
+        ts_te_low = edge.ts_te_low;
+#endif
     }
 
     edge_t(edge_t&& edge) : val(edge.val) {
-    #ifdef TRDF_MODE
-        ts = edge.ts;
-        te = edge.te;
-    #endif
+#ifdef TRDF_MODE
+        ts_high = edge.ts_high;
+        te_high = edge.te_high;
+        ts_te_low = edge.ts_te_low;
+#endif
     }
 
     edge_t& operator=(sid_t id) {
@@ -230,10 +245,11 @@ struct edge_t {
     edge_t& operator=(const edge_t& e) {
         if (this != &e) {
             val = e.val;
-        #ifdef TRDF_MODE
-            ts = e.ts;
-            te = e.te;
-        #endif
+#ifdef TRDF_MODE
+            ts_high = e.ts_high;
+            te_high = e.te_high;
+            ts_te_low = e.ts_te_low;
+#endif
         }
         return *this;
     }
@@ -241,17 +257,18 @@ struct edge_t {
     edge_t& operator=(const edge_t&& e) {
         if (this != &e) {
             val = e.val;
-        #ifdef TRDF_MODE
-            ts = e.ts;
-            te = e.te;
-        #endif
+#ifdef TRDF_MODE
+            ts_high = e.ts_high;
+            te_high = e.te_high;
+            ts_te_low = e.ts_te_low;
+#endif
         }
         return *this;
     }
 
     bool operator==(const edge_t& e) {
     #ifdef TRDF_MODE
-        return this->val == e.val && this->ts == e.ts && this->te == e.te;
+        return this->val == e.val && this->ts_high == e.ts_high && this->te_high == e.te_high && this->ts_te_low == e.ts_te_low;
     #else
         return this->val == e.val;
     #endif
@@ -261,51 +278,5 @@ struct edge_t {
         return this->val == id;
     }
 };
-
-#ifdef TRDF_MODE
-struct time_edge_t {
-    int val;  // vertex ID
-    int64_t ts;  // start timestamp
-    int64_t te;  // end timestamp
-
-    // clang-format off
-#ifdef USE_GPU
-    __host__ __device__
-#endif
-    time_edge_t(sid_t id, int64_t ts, int64_t te): val(id), ts(ts), te(te) {}
-    // clang-format on
-
-    bool valid(int64_t _ts, int64_t _te) const {
-        bool rev = ((_ts <= _te) && (ts <= te) && (_ts <= te && _te >= ts)) || (_ts == TIMESTAMP_MIN && _te == TIMESTAMP_MAX);
-        return rev;
-    }
-
-    time_edge_t(const time_edge_t& edge) : val(edge.val), ts(edge.ts), te(edge.te) {}
-
-    time_edge_t(time_edge_t&& edge) : val(edge.val), ts(edge.ts), te(edge.te) {}
-
-    time_edge_t& operator=(time_edge_t& e) {
-        if (this != &e) {
-            val = e.val;
-            ts = e.ts;
-            te = e.te;
-        }
-        return *this;
-    }
-
-    time_edge_t& operator=(time_edge_t&& e) {
-        if (this != &e) {
-            val = e.val;
-            ts = e.ts;
-            te = e.te;
-        }
-        return *this;
-    }
-
-    bool operator==(const time_edge_t& e) {
-        return this->val == e.val && this->ts == e.ts && this->te == e.te;
-    }
-};
-#endif
 
 }  // namespace wukong
