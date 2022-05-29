@@ -3,5 +3,4 @@ PREFIX ub: <http://swat.cse.lehigh.edu/onto/univ-bench.owl#>
 
 SELECT ?X FROM [1970-03-22T02:24:45, 2020-01-01T12:59:58] WHERE {
 	?X  ub:publicationAuthor  %ub:AssistantProfessor  .
-	?X  rdf:type  ub:Publication  .
 }

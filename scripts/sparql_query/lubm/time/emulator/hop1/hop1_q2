@@ -3,5 +3,4 @@ PREFIX ub: <http://swat.cse.lehigh.edu/onto/univ-bench.owl#>
 
 SELECT ?S WHERE {
 	[?S, ?E] ?X  ub:memberOf  %ub:Department  .
-	?X  rdf:type  ub:GraduateStudent  .
 }
