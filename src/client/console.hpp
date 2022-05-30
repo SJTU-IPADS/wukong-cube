@@ -102,6 +102,7 @@ options_description     config_desc("config <args>       run commands for config
 options_description     logger_desc("logger <args>       run commands for logger");
 options_description     sparql_desc("sparql <args>       run SPARQL queries in single or batch mode");
 options_description sparql_emu_desc("sparql-emu <args>   emulate clients to continuously send SPARQL queries");
+options_description sparql_emu_serial_desc("sparql-emu-serial <args>   emulate clients to continuously send SPARQL queries serially");
 options_description       load_desc("load <args>         load RDF data into dynamic (in-memmory) graph store");
 options_description       gsck_desc("gsck <args>         check the integrity of (in-memmory) graph storage");
 options_description  load_stat_desc("load-stat           load statistics of SPARQL query optimizer");
@@ -163,6 +164,16 @@ void init_options_desc()
     ("help,h", "help message about sparql-emu")
     ;
     all_desc.add(sparql_emu_desc);
+
+    // e.g., wukong> sparql-emu-serial <args>
+    sparql_emu_serial_desc.add_options()
+    (",f", value<std::string>()->value_name("<fname>"), "run queries generated from temples configured by <fname>")
+    (",p", value<std::string>()->value_name("<fname>"), "adopt user-defined query plans from <fname> for running queries")
+    (",d", value<int>()->default_value(10)->value_name("<sec>"), "eval <sec> seconds (default: 10)")
+    (",w", value<int>()->default_value(5)->value_name("<sec>"), "warmup <sec> seconds (default: 5)")
+    ("help,h", "help message about sparql-emu-serial")
+    ;
+    all_desc.add(sparql_emu_serial_desc);
 
     // e.g., wukong> load <args>
     load_desc.add_options()
@@ -713,6 +724,126 @@ static void run_sparql_emu(Proxy * proxy, int argc, char **argv)
 }
 
 /**
+ * run the 'sparql-emu-serial' command
+ * usage:
+ * sparql-emu -f <fname> [options]
+ *   -d <sec>   eval <sec> seconds (default: 10)
+ *   -w <sec>   warmup <sec> seconds (default: 5)
+ */
+static void run_sparql_emu_serial(Proxy * proxy, int argc, char **argv)
+{
+    // use all proxy threads to run SPARQL emulators
+
+    // parse command
+    variables_map sparql_emu_vm;
+    try {
+        store(parse_command_line(argc, argv, sparql_emu_desc), sparql_emu_vm);
+    } catch (...) { // something go wrong
+        fail_to_parse(proxy, argc, argv);
+        return;
+    }
+    notify(sparql_emu_vm);
+
+    // parse options
+    if (sparql_emu_vm.count("help")) {
+        if (MASTER(proxy))
+            std::cout << sparql_emu_desc;
+        return;
+    }
+
+    std::string fname;
+    if (!sparql_emu_vm.count("-f")) {
+        fail_to_parse(proxy, argc, argv); // invalid cmd
+        return;
+    } else {
+        fname = sparql_emu_vm["-f"].as<std::string>();
+    }
+
+    // option: -p <fname>
+    if (!(sparql_emu_vm.count("-p") ^ Global::enable_planner)) {
+        if (Global::enable_planner) {
+            logstream(LOG_WARNING) << "Optimizer is enabled, "
+                                   << "your config file of plans (-p) will be ignored." << LOG_endl;
+        } else {
+            logstream(LOG_ERROR) << "Optimizer is disabled, "
+                                 << "you must provide a user-defined plan file (-p)." << LOG_endl;
+            fail_to_parse(proxy, argc, argv); // invalid cmd
+            return;
+        }
+    }
+
+    std::ifstream fmt_stream;
+    if (Global::enable_planner) {
+        fmt_stream.setstate(std::ios::failbit);
+    } else {
+        std::string fmt_fname = sparql_emu_vm["-p"].as<std::string>();
+        fmt_stream.open(fmt_fname);
+        if (!fmt_stream.good()) { // fail to load user-defined plan file
+            logstream(LOG_ERROR) << "The plan file is not found: "
+                                 << fmt_fname << LOG_endl;
+            fail_to_parse(proxy, argc, argv); // invalid cmd
+            return;
+        }
+    }
+
+    // config file for the SPARQL emulator
+    std::ifstream ifs(fname);
+    if (!ifs.good()) {
+        logstream(LOG_ERROR) << "Configure file not found: " << fname << LOG_endl;
+        fail_to_parse(proxy, argc, argv);
+        return;
+    }
+
+    // NOTE: the option with default_value is always available
+    // default value: duration(10), warmup(5)
+    int duration = sparql_emu_vm["-d"].as<int>();
+    int warmup = sparql_emu_vm["-w"].as<int>();
+
+    if (duration <= 0 || warmup < 0) {
+        logstream(LOG_ERROR) << "invalid parameters for SPARQL emulator! "
+                             << "(duration=" << duration << ", warmup=" << warmup << ")" << LOG_endl;
+        fail_to_parse(proxy, argc, argv); // invalid cmd
+        return;
+    }
+
+    if (duration <= warmup) {
+        logstream(LOG_INFO) << "Duration time (" << duration
+                            << "sec) is less than warmup time ("
+                            << warmup << "sec)." << LOG_endl;
+        fail_to_parse(proxy, argc, argv); // invalid cmd
+        return;
+    }
+
+
+    /// do sparql-emu
+    Monitor monitor;
+    int ret = proxy->run_query_emu_serial(ifs, fmt_stream, duration, warmup, monitor);
+    if (ret != 0) {
+        logstream(LOG_ERROR) << "Failed to run the query emulator (ERRNO: " << ret << ")!" << LOG_endl;
+        fail_to_parse(proxy, argc, argv); // invalid cmd
+        return;
+    }
+
+    // FIXME: maybe hang in here if the input file misses in some machines
+    //        or inconsistent global variables (e.g., global_enable_planner)
+    console_barrier(proxy->tid);
+
+    // aggregate and print performance statistics for running emulators on all servers
+    if (MASTER(proxy)) {
+        for (int i = 1; i < Global::num_servers * Global::num_proxies; i++) {
+            Monitor other = console_recv<Monitor>(proxy->tid);
+            monitor.merge(other);
+        }
+        monitor.aggregate();
+        monitor.print_cdf();
+        monitor.print_thpt();
+    } else {
+        // send logs to the master proxy
+        console_send<Monitor>(0, 0, monitor);
+    }
+}
+
+/**
  * run the 'load' command
  * usage:
  * load -d <dname> [options]
@@ -991,6 +1122,8 @@ void run_console(Proxy *proxy)
                 run_sparql(proxy, argc, argv);
             } else if (cmd_type == "sparql-emu") {  // run a SPARQL emulator on each proxy
                 run_sparql_emu(proxy, argc, argv);
+            } else if (cmd_type == "sparql-emu-serial") {  // run a SPARQL emulator serially on each proxy
+                run_sparql_emu_serial(proxy, argc, argv);
             } else if (cmd_type == "load") {
                 run_load(proxy, argc, argv);
             } else if (cmd_type == "gsck") {

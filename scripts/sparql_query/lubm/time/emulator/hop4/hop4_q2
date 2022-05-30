@@ -5,5 +5,5 @@ SELECT ?X ?W FROM [1970-03-22T02:24:45, 2020-01-01T12:59:58] WHERE {
 	?Z  ub:worksFor  %ub:Department  .
 	?X  ub:teachingAssistantOf ?Y  .
 	?Z  ub:teacherOf ?Y  .
-	?W  ub:publicationAuthor  ?Z  .
+	?X  ub:emailAddress  ?W  .
 }

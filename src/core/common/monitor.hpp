@@ -157,6 +157,11 @@ public:
             std::vector<uint64_t> &lats = total_latency_map[i];
             if (!lats.empty())
                 std::sort(lats.begin(), lats.end());
+            uint64_t sum = 0;
+            for (int i = 0; i < lats.size(); i++) {
+                sum += lats[i];
+            }
+            logstream(LOG_INFO) << "The average latency of Q" << i << " is " << sum / lats.size() << " usec" << LOG_endl;
         }
         is_aggregated = true;
     }

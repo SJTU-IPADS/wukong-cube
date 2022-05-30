@@ -553,6 +553,141 @@ public:
         return 0; // success
     } // end of run_query_emu
 
+    // Run a query emulator for @d seconds without parallel execution. Command is "-b"
+    // Warm up for @w firstly, then measure throughput.
+    // Latency is evaluated for @d seconds.
+    int run_query_emu_serial(std::istream &is, std::istream &fmt_stream, int d, int w, Monitor &monitor) {
+        uint64_t duration = SEC(d);
+        uint64_t warmup = SEC(w);
+
+        // parse the first line of batch config file
+        // [#lights] [#heavies]
+        int nlights, nheavies;
+        is >> nlights >> nheavies;
+        int ntypes = nlights + nheavies;
+
+        if (ntypes <= 0 || nlights < 0 || nheavies < 0) {
+            logstream(LOG_ERROR) << "Invalid #lights (" << nlights << " < 0)"
+                                 << " or #heavies (" << nheavies << " < 0)!" << LOG_endl;
+            return -2; // parsing failed
+        }
+
+        // read plan files according to config file of plans
+        std::vector<std::string> fmt_fnames;
+        if (!Global::enable_planner) {
+            ASSERT(fmt_stream.good());
+
+            fmt_fnames.resize(ntypes);
+            for (int i = 0; i < ntypes; i ++)
+                fmt_stream >> fmt_fnames[i];  // FIXME: incorrect config file (e.g., few plan files)
+        }
+
+        std::vector<SPARQLQuery_Template> tpls(nlights);
+        std::vector<SPARQLQuery> heavy_reqs(nheavies);
+
+        // parse template queries
+        std::vector<int> loads(ntypes);
+        for (int i = 0; i < ntypes; i++) {
+            // each line is a class of light or heavy query
+            // [fname] [#load]
+            std::string fname;
+            int load;
+
+            is >> fname;
+            is >> load;
+            ASSERT(load > 0);
+            loads[i] = load;
+
+            // parse the query
+            int ret = i < nlights ?
+                           parser.parse_template(fname,tpls[i]) : // light query
+                           parser.parse(fname,heavy_reqs[i - nlights]); // heavy query
+
+            if (ret) {
+                logstream(LOG_ERROR) << "Template parsing failed!" << LOG_endl;
+                return -ret; // parsing failed
+            }
+
+            // generate a template for each class of light query
+            if (i < nlights)
+                fill_template(tpls[i]);
+
+            // adapt user-defined plan according
+            if (!Global::enable_planner) {
+                std::ifstream fs(fmt_fnames[i]);
+                if (!fs.good()) {
+                    logstream(LOG_ERROR) << "Plan file not found: " << fmt_fnames[i] << LOG_endl;
+                    return -1; // file not found
+                }
+
+                if (i < nlights) // light query
+                    planner.set_plan(tpls[i].pattern_group, fs, tpls[i].ptypes_pos);
+                else // heavy query
+                    planner.set_plan(heavy_reqs[i - nlights].pattern_group, fs);
+            }
+        }
+
+        monitor.init(ntypes);
+
+        bool start = false; // start to measure throughput
+        uint64_t send_cnt = 0, recv_cnt = 0;
+
+        uint64_t init = timer::get_usec();
+        // send requeries for duration seconds
+        while ((timer::get_usec() - init) < duration) {
+            // send requests
+            sweep_msgs(); // sweep pending msgs first
+
+            int idx = wukong::math::get_distribution(coder.get_random(), loads);
+            SPARQLQuery r = idx < nlights ?
+                            tpls[idx].instantiate(coder.get_random()) : // light query
+                            heavy_reqs[idx - nlights]; // heavy query
+
+            if (Global::enable_planner)
+                planner.generate_plan(r);
+
+            setpid(r);
+            r.result.blind = true; // always not take back results for emulator
+
+            if (r.start_from_index()) {
+#ifdef USE_GPU
+                r.dev_type = SPARQLQuery::DeviceType::GPU;
+#else
+                r.mt_factor = Global::mt_threshold;
+#endif
+            }
+
+            monitor.start_record(r.pqid, idx);
+            send_request(r);
+
+            send_cnt++;
+
+            // recieve replies
+            while (true) {
+                SPARQLQuery r;
+                if (tryrecv_reply(r)) {
+                    recv_cnt++;
+                    monitor.end_record(r.pqid);
+                    break;
+                }
+            }
+
+            monitor.print_timely_thpt(recv_cnt, sid, tid); // print throughput
+
+            // start to measure throughput after first warmup seconds
+            if (!start && (timer::get_usec() - init) > warmup) {
+                monitor.start_thpt(recv_cnt);
+                start = true;
+            }
+        }
+
+        monitor.end_thpt(recv_cnt); // finish to measure throughput
+
+        monitor.finish();
+
+        return 0; // success
+    } // end of run_query_emu_serial
+
 #ifdef DYNAMIC_GSTORE
     int dynamic_load_data(std::string &dname, RDFLoad &reply, Monitor &monitor, bool &check_dup) {
         monitor.init();
