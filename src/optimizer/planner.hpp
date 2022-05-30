@@ -671,7 +671,7 @@ class Planner {
         std::vector<SPARQLQuery::Pattern> patterns;
         for (int i = 0; i < orders.size(); i++) {
             // number of orders starts from 1
-            SPARQLQuery::Pattern pattern = group.patterns[orders.size() - orders[i]];
+            SPARQLQuery::Pattern pattern = group.patterns[orders[i] - 1];
 
             if (dirs[i] == "<") {
                 pattern.direction = IN;

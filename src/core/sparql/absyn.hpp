@@ -419,27 +419,27 @@ public:
         }
         switch(patternNode->type){
             case Type_Pattern:{
-                (newPatternGroup->patterns).push_back(*(patternNode->pattern));
+                (newPatternGroup->patterns).emplace(newPatternGroup->patterns.begin(), *(patternNode->pattern));
                 delete patternNode->pattern;
                 break;
             }
             case Type_Filter:{
-                (newPatternGroup->filters).push_back(*(patternNode->filter));
+                (newPatternGroup->filters).emplace(newPatternGroup->filters.begin(), *(patternNode->filter));
                 delete patternNode->filter;
                 break;
             }
             case Type_Optional:{
-                (newPatternGroup->optional).push_back(*(patternNode->patternGroup));
+                (newPatternGroup->optional).emplace(newPatternGroup->optional.begin(), *(patternNode->patternGroup));
                 delete patternNode->filter;
                 break;
             } 
             case Type_Union:{
                 std::vector<PatternGroup>* pgList = patternNode->unionGroup; 
                 if(pgList->size()==1){
-                    newPatternGroup->patterns.insert(newPatternGroup->patterns.end(),(*pgList)[0].patterns.begin(),(*pgList)[0].patterns.end());
-                    newPatternGroup->filters.insert(newPatternGroup->filters.end(),(*pgList)[0].filters.begin(),(*pgList)[0].filters.end());
-                    newPatternGroup->optional.insert(newPatternGroup->optional.end(),(*pgList)[0].optional.begin(),(*pgList)[0].optional.end());
-                    newPatternGroup->unions.insert(newPatternGroup->unions.end(),(*pgList)[0].unions.begin(),(*pgList)[0].unions.end());
+                    newPatternGroup->patterns.insert(newPatternGroup->patterns.begin(),(*pgList)[0].patterns.begin(),(*pgList)[0].patterns.end());
+                    newPatternGroup->filters.insert(newPatternGroup->filters.begin(),(*pgList)[0].filters.begin(),(*pgList)[0].filters.end());
+                    newPatternGroup->optional.insert(newPatternGroup->optional.begin(),(*pgList)[0].optional.begin(),(*pgList)[0].optional.end());
+                    newPatternGroup->unions.insert(newPatternGroup->unions.begin(),(*pgList)[0].unions.begin(),(*pgList)[0].unions.end());
                 }else if(pgList->size()>1){
                     for(auto pg : *pgList){
                         newPatternGroup->unions.push_back(pg);
@@ -461,7 +461,7 @@ public:
         }else{
             newPgList = pgList;
         }
-        newPgList->push_back(*pg);
+        newPgList->emplace(newPgList->begin(), *pg);
         delete pg;
         return newPgList;
     }
@@ -472,7 +472,7 @@ public:
         if(patternList){
             new_group.patterns = *patternList;
             delete patternList;
-            patterns.optional.push_back(new_group);
+            patterns.optional.emplace(patterns.optional.begin(), new_group);
         }
     }
 
