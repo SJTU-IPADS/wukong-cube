@@ -1,0 +1,10 @@
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX ub: <http://swat.cse.lehigh.edu/onto/univ-bench.owl#>
+
+SELECT ?V WHERE {
+    ?E rdf:type ub:hypertype6
+    ?E rdf:hyperedge ?V
+    ?E rdf:hyperedge ub:entity151698
+}
+GROUP BY ?E
+HAVING (COUNT(?V) >= 2)
