@@ -480,13 +480,14 @@ public:
 
             is >> fname;
             is >> load;
+            std::ifstream ifs(fname);
             ASSERT(load > 0);
             loads[i] = load;
 
             // parse the query
             int ret = i < nlights ?
-                           parser.parse_template(fname,tpls[i]) : // light query
-                           parser.parse(fname,heavy_reqs[i - nlights]); // heavy query
+                           parser.parse_template(ifs,tpls[i]) : // light query
+                           parser.parse(ifs,heavy_reqs[i - nlights]); // heavy query
 
             if (ret) {
                 logstream(LOG_ERROR) << "Template parsing failed!" << LOG_endl;

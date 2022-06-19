@@ -745,7 +745,7 @@ static void run_sparql_emu(ConsoleProxy * proxy, int argc, char **argv)
  *   -d <sec>   eval <sec> seconds (default: 10)
  *   -w <sec>   warmup <sec> seconds (default: 5)
  */
-static void run_sparql_emu_serial(Proxy * proxy, int argc, char **argv)
+static void run_sparql_emu_serial(ConsoleProxy * proxy, int argc, char **argv)
 {
     // use all proxy threads to run SPARQL emulators
 
@@ -841,12 +841,12 @@ static void run_sparql_emu_serial(Proxy * proxy, int argc, char **argv)
 
     // FIXME: maybe hang in here if the input file misses in some machines
     //        or inconsistent global variables (e.g., global_enable_planner)
-    console_barrier(proxy->tid);
+    console_barrier(proxy->get_tid());
 
     // aggregate and print performance statistics for running emulators on all servers
     if (MASTER(proxy)) {
         for (int i = 1; i < Global::num_servers * Global::num_proxies; i++) {
-            Monitor other = console_recv<Monitor>(proxy->tid);
+            Monitor other = console_recv<Monitor>(proxy->get_tid());
             monitor.merge(other);
         }
         monitor.aggregate();
