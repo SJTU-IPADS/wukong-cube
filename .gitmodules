@@ -10,3 +10,12 @@
 [submodule "deps/eigen"]
 	path = deps/eigen
 	url = https://gitlab.com/libeigen/eigen.git
+[submodule "deps/pybind11"]
+	path = deps/pybind11
+	url = https://github.com/pybind/pybind11.git
+[submodule "deps/nlohmann"]
+	path = deps/nlohmann
+	url = git@github.com:nlohmann/json.git
+[submodule "deps/rpclib"]
+	path = deps/rpclib
+	url = git@github.com:Bessss-zyw/DS-RPC-Lib.git

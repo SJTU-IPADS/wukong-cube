@@ -24,8 +24,6 @@
 
 #include "core/common/global.hpp"
 
-#include "core/sparql/query.hpp"
-
 // network
 #include "tcp_adaptor.hpp"
 #include "rdma_adaptor.hpp"
@@ -52,11 +50,6 @@ public:
             return tcp->send(dst_sid, dst_tid, str);
     }
 
-    bool send(int dst_sid, int dst_tid, const Bundle &b) {
-        std::string str = b.to_str();
-        return send(dst_sid, dst_tid, str);
-    }
-
     // gpu-direct send, from gpu mem to remote ring buffer
     bool send_dev2host(int dst_sid, int dst_tid, char *data, uint64_t sz) {
 #ifdef USE_GPU
@@ -72,13 +65,13 @@ public:
 #endif
     }
 
-    Bundle recv() {
+    std::string recv() {
         std::string str;
         if (Global::use_rdma && rdma->init)
             str = rdma->recv(tid);
         else
             str = tcp->recv(tid);
-        return Bundle(str);
+        return str;
     }
 
     // receive msg from a specified server
@@ -98,27 +91,12 @@ public:
             return tcp->tryrecv(tid, str);
     }
 
-    bool tryrecv(Bundle &b) {
-        std::string str;
-        if (!tryrecv(str)) return false;
-        b.init(str);
-        return true;
-    }
-
     // Receive msg and return the sender
     bool tryrecv(std::string &str, int &sender) {
         if (Global::use_rdma && rdma->init)
             return rdma->tryrecv(tid, str, sender);
         else
             return tcp->tryrecv(tid, str, sender);
-    }
-
-    // Receive msg and return the sender
-    bool tryrecv(Bundle &b, int &sender) {
-        std::string str;
-        if (!tryrecv(str, sender)) return false;
-        b.init(str);
-        return true;
     }
 };
 

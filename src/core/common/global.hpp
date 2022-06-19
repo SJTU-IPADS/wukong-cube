@@ -41,6 +41,7 @@ public:
 
     static int data_port_base __attribute__((weak));
     static int ctrl_port_base __attribute__((weak));
+    static int server_port_base __attribute__((weak));
     static int rdma_ctrl_port_base __attribute__((weak));
 
     static int rdma_buf_size_mb __attribute__((weak));
@@ -54,6 +55,9 @@ public:
     static bool enable_caching __attribute__((weak));
     static bool enable_workstealing __attribute__((weak));
     static int stealing_pattern __attribute__((weak));
+
+    static bool enable_standalone_str_server __attribute__((weak));
+    static std::string standalone_str_server_addr __attribute__((weak));
 
     static bool silent __attribute__((weak));
 
@@ -86,6 +90,7 @@ std::string Global::input_folder;
 
 int Global::data_port_base = 5500;
 int Global::ctrl_port_base = 9576;
+int Global::server_port_base = 6576;
 int Global::rdma_ctrl_port_base = 19344;
 
 int Global::rdma_buf_size_mb = 64;
@@ -99,6 +104,9 @@ int Global::mt_threshold = 16;
 bool Global::enable_caching = true;
 bool Global::enable_workstealing = false;
 int Global::stealing_pattern = 0;  // 0 = pair stealing,  1 = ring stealing
+
+bool Global::enable_standalone_str_server = false;
+std::string Global::standalone_str_server_addr;
 
 bool Global::silent = true;  // don't take back results by default
 

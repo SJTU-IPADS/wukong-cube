@@ -31,7 +31,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/program_options.hpp>
 
-#include "client/proxy.hpp"
+#include "client/console_proxy.hpp"
 
 #include "core/common/global.hpp"
 #include "core/common/config.hpp"
@@ -83,15 +83,16 @@ static void console_barrier(int tid)
     __sync_fetch_and_add(&_curr, 1);
     while (_curr < _next)
         usleep(1); // wait
-    _next += Global::num_proxies; // next barrier
+    //_next += Global::num_proxies; // next barrier
+    _next += 1; // next barrier
 }
 
 // the master proxy is the 1st proxy of the 1st server (i.e., sid == 0 and tid == 0)
-#define MASTER(_p) ((_p)->sid == 0 && (_p)->tid == 0)
+#define MASTER(_p) ((_p)->get_sid() == 0 && (_p)->get_tid() == 0)
 // the leader proxy is the 1st proxy on each server (i.e., tid == 0)
-#define LEADER(_p) ((_p)->tid == 0)
+#define LEADER(_p) ((_p)->get_tid() == 0)
 
-#define PRINT_ID(_p) "[" << (_p)->sid << "|" << (_p)->tid << "]"
+#define PRINT_ID(_p) "[" << (_p)->get_sid() << "|" << (_p)->get_tid() << "]"
 
 
 // options
@@ -210,7 +211,7 @@ void init_options_desc()
 /**
  * fail to parse the command
  */
-static void fail_to_parse(Proxy *proxy, int argc, char** argv)
+static void fail_to_parse(ConsoleProxy *proxy, int argc, char** argv)
 {
     std::string cmd;
     for (int i = 0; i < argc; i++)
@@ -303,7 +304,7 @@ static void print_help(void)
  *   -l <fname>  load config items from <file>
  *   -s <str>    set config items by <str> (format: item1=val1&item2=...)
  */
-static void run_config(Proxy *proxy, int argc, char **argv)
+static void run_config(ConsoleProxy *proxy, int argc, char **argv)
 {
     // use the leader proxy thread (0) on each server to configure system
     if (!LEADER(proxy))
@@ -355,7 +356,7 @@ static void run_config(Proxy *proxy, int argc, char **argv)
             console_send<std::string>(i, 0, str);
     } else {
         // recieve <str>
-        str = console_recv<std::string>(proxy->tid);
+        str = console_recv<std::string>(proxy->get_tid());
     }
 
     /// do config
@@ -375,7 +376,7 @@ static void run_config(Proxy *proxy, int argc, char **argv)
  *   -s <level>  set log level to <level> (i.e., EVERYTHING=0, DEBUG=1, INFO=2, EMPH=3,
  *                                               WARNING=4, ERROR=5, FATAL=6, NONE=7)
  */
-static void run_logger(Proxy *proxy, int argc, char **argv)
+static void run_logger(ConsoleProxy *proxy, int argc, char **argv)
 {
     // use the leader proxy thread (0) on each server to configure logger
     if (!LEADER(proxy))
@@ -414,10 +415,10 @@ static void run_logger(Proxy *proxy, int argc, char **argv)
 
             // send <str> to all consoles
             for (int i = 1; i < Global::num_servers; i++)
-                console_send<int>(i, proxy->tid, level);
+                console_send<int>(i, proxy->get_tid(), level);
         } else {
             // recieve <str>
-            level = console_recv<int>(proxy->tid);
+            level = console_recv<int>(proxy->get_tid());
         }
 
         if (level >= LOG_EVERYTHING && level <= LOG_NONE) {
@@ -448,7 +449,7 @@ static void run_logger(Proxy *proxy, int argc, char **argv)
  *
  * sparql -b <fname>
  */
-static void run_sparql(Proxy * proxy, int argc, char **argv)
+static void run_sparql(ConsoleProxy * proxy, int argc, char **argv)
 {
     // use the master proxy thread to run SPARQL queries in single mode or batch mode
     if (!MASTER(proxy))
@@ -481,12 +482,19 @@ static void run_sparql(Proxy * proxy, int argc, char **argv)
     /// [single mode]
     if (sparql_vm.count("-f")) {
         std::string fname = sparql_vm["-f"].as<std::string>();
+        std::ifstream query_stream(fname);
+        if (!query_stream.good()) { // fail to load query file
+            logstream(LOG_ERROR) << "The query file is not found: "
+                                    << fname << LOG_endl;
+            fail_to_parse(proxy, argc, argv); // invalid cmd
+            return;
+        }
 
         // NOTE: the options with default_value are always available.
-        //       default value: mfactor(1), cnt(1), nopts(1), nlines(0)
+        //       default value: mt_factor(1), cnt(1), nopts(1), nlines(0)
 
         // option: -m <factor>, -n <num>
-        int mfactor = sparql_vm["-m"].as<int>(); // the number of multithreading
+        int mt_factor = sparql_vm["-m"].as<int>(); // the number of multithreading
         int cnt = sparql_vm["-n"].as<int>();     // the number of executions
 
         // option: -p <fname>, -N <num>
@@ -551,17 +559,25 @@ static void run_sparql(Proxy * proxy, int argc, char **argv)
 
         /// do sparql
         SPARQLQuery reply;
-        Monitor monitor;
+
+        // set parameters
+        std::map<std::string, std::string> params;
+        params["nopts"] = std::to_string(nopts);
+        params["mt_factor"] = std::to_string(mt_factor);
+        params["snd2gpu"] = snd2gpu ? "true" : "false";
+        params["cnt"] = std::to_string(cnt);
+        params["nlines"] = std::to_string(nlines);
+        params["ofname"] = ofname;
+
         try {
-            proxy->run_single_query(fname, fmt_stream, nopts, mfactor, snd2gpu,
-                                    cnt, nlines, ofname, reply, monitor);
+            proxy->run_single_query(query_stream, fmt_stream, reply, params);
         } catch (WukongException &ex) {
             logstream(LOG_ERROR) << "Query failed [ERRNO " << ex.code()
                                  << "]: " << ex.what() << LOG_endl;
             fail_to_parse(proxy, argc, argv);  // invalid cmd
             return;
         }
-        monitor.print_latency(cnt);
+        proxy->monitor.print_latency(cnt);
     }
 
     /// [batch mode]
@@ -608,7 +624,7 @@ static void run_sparql(Proxy * proxy, int argc, char **argv)
  *   -w <sec>   warmup <sec> seconds (default: 5)
  *   -p <num>   send <num> queries in parallel (default: 20)
  */
-static void run_sparql_emu(Proxy * proxy, int argc, char **argv)
+static void run_sparql_emu(ConsoleProxy * proxy, int argc, char **argv)
 {
     // use all proxy threads to run SPARQL emulators
 
@@ -696,8 +712,7 @@ static void run_sparql_emu(Proxy * proxy, int argc, char **argv)
 
 
     /// do sparql-emu
-    Monitor monitor;
-    int ret = proxy->run_query_emu(ifs, fmt_stream, duration, warmup, otf, monitor);
+    int ret = proxy->run_query_emu(ifs, fmt_stream, duration, warmup, otf);
     if (ret != 0) {
         logstream(LOG_ERROR) << "Failed to run the query emulator (ERRNO: " << ret << ")!" << LOG_endl;
         fail_to_parse(proxy, argc, argv); // invalid cmd
@@ -706,20 +721,20 @@ static void run_sparql_emu(Proxy * proxy, int argc, char **argv)
 
     // FIXME: maybe hang in here if the input file misses in some machines
     //        or inconsistent global variables (e.g., global_enable_planner)
-    console_barrier(proxy->tid);
+    console_barrier(proxy->get_tid());
 
     // aggregate and print performance statistics for running emulators on all servers
     if (MASTER(proxy)) {
         for (int i = 1; i < Global::num_servers * Global::num_proxies; i++) {
-            Monitor other = console_recv<Monitor>(proxy->tid);
-            monitor.merge(other);
+            Monitor other = console_recv<Monitor>(proxy->get_tid());
+            proxy->monitor.merge(other);
         }
-        monitor.aggregate();
-        monitor.print_cdf();
-        monitor.print_thpt();
+        proxy->monitor.aggregate();
+        proxy->monitor.print_cdf();
+        proxy->monitor.print_thpt();
     } else {
         // send logs to the master proxy
-        console_send<Monitor>(0, 0, monitor);
+        console_send<Monitor>(0, 0, proxy->monitor);
     }
 }
 
@@ -849,7 +864,7 @@ static void run_sparql_emu_serial(Proxy * proxy, int argc, char **argv)
  * load -d <dname> [options]
  *   -c    check duplication or not
  */
-static void run_load(Proxy * proxy, int argc, char **argv)
+static void run_load(ConsoleProxy * proxy, int argc, char **argv)
 {
     // use the master proxy thread to dyanmically load RDF data
     if (!MASTER(proxy))
@@ -887,16 +902,15 @@ static void run_load(Proxy * proxy, int argc, char **argv)
     if (dname[dname.length() - 1] != '/')
         dname = dname + "/"; // force a "/" at the end of dname.
 
-    Monitor monitor;
     RDFLoad reply;
     //FIXME: the dynamic_load_data will exit if the directory is not exist
-    int ret = proxy->dynamic_load_data(dname, reply, monitor, c_enable);
+    int ret = proxy->dynamic_load_data(dname, reply, c_enable);
     if (ret != 0) {
         logstream(LOG_ERROR) << "Failed to load dynamic data from directory " << dname
                              << " (ERRNO: " << ret << ")!" << LOG_endl;
         return;
     }
-    monitor.print_latency();
+    proxy->monitor.print_latency();
 #else
     logstream(LOG_ERROR) << "Can't load data into static graph store." << LOG_endl;
     logstream(LOG_ERROR) << "You can enable it by building Wukong with -DUSE_DYNAMIC_GSTORE=ON." << LOG_endl;
@@ -910,7 +924,7 @@ static void run_load(Proxy * proxy, int argc, char **argv)
  *   -i   check from index key/value pair to normal key/value pair
  *   -n   check from normal key/value pair to index key/value pair
  */
-static void run_gsck(Proxy *proxy, int argc, char **argv)
+static void run_gsck(ConsoleProxy *proxy, int argc, char **argv)
 {
     // use the master proxy thread to run gstore checker
     if (!MASTER(proxy))
@@ -942,15 +956,14 @@ static void run_gsck(Proxy *proxy, int argc, char **argv)
     }
 
     /// do gsck
-    Monitor monitor;
     GStoreCheck reply;
-    int ret = proxy->gstore_check(reply, monitor, i_enable, n_enable);
+    int ret = proxy->gstore_check(reply, i_enable, n_enable);
     if (ret != 0) {
         logstream(LOG_ERROR) << "Data integrity failed in graph store"
                              << " (" << ret << ")" << LOG_endl;
         return;
     }
-    monitor.print_latency();
+    proxy->monitor.print_latency();
 }
 
 /**
@@ -959,7 +972,7 @@ static void run_gsck(Proxy *proxy, int argc, char **argv)
  * load-stat [options]
  *   -f <fname>    load statistics from <fname> located at data folder
  */
-static void run_load_stat(Proxy *proxy, int argc, char **argv)
+static void run_load_stat(ConsoleProxy *proxy, int argc, char **argv)
 {
     // use the leader proxy thread on each server to configure system
     if (!LEADER(proxy))
@@ -991,7 +1004,7 @@ static void run_load_stat(Proxy *proxy, int argc, char **argv)
         fname = load_stat_vm["-f"].as<std::string>();
     }
 
-    proxy->stats->load_stat_from_file(fname, con_adaptor);
+    proxy->get_stats()->load_stat_from_file(fname, con_adaptor);
 }
 
 /**
@@ -1000,7 +1013,7 @@ static void run_load_stat(Proxy *proxy, int argc, char **argv)
  * load-stat [options]
  *   -f <fname>    store statistics to <fname> located at data folder
  */
-static void run_store_stat(Proxy *proxy, int argc, char **argv)
+static void run_store_stat(ConsoleProxy *proxy, int argc, char **argv)
 {
     // use the master proxy thread to store statistics
     if (!MASTER(proxy))
@@ -1034,20 +1047,20 @@ static void run_store_stat(Proxy *proxy, int argc, char **argv)
         fname = store_stat_vm["-f"].as<std::string>();
     }
 
-    proxy->stats->store_stat_to_file(fname);
+    proxy->get_stats()->store_stat_to_file(fname);
 }
 
 /**
  * The Wukong's console is co-located with the main proxy (the 1st proxy thread on the 1st server)
  * and provide a simple interactive cmdline to tester
  */
-void run_console(Proxy *proxy)
+void run_console(ConsoleProxy *proxy)
 {
     // init option descriptions once on each server (by the leader proxy)
     if (LEADER(proxy))
         init_options_desc();
 
-    console_barrier(proxy->tid);
+    console_barrier(proxy->get_tid());
     if (MASTER(proxy))
         std::cout << std::endl
              << "Input \'help\' command to get more information"
@@ -1056,7 +1069,7 @@ void run_console(Proxy *proxy)
 
     bool once = true;
     while (true) {
-        console_barrier(proxy->tid);
+        console_barrier(proxy->get_tid());
         std::string cmd;
         if (MASTER(proxy)) {
             if (enable_oneshot) {
@@ -1097,7 +1110,7 @@ void run_console(Proxy *proxy)
             }
         } else {
             // recieve <cmd>
-            cmd = console_recv<std::string>(proxy->tid);
+            cmd = console_recv<std::string>(proxy->get_tid());
         }
 
         // transform the comnmand to (argc, argv)

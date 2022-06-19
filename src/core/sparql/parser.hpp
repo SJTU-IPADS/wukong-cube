@@ -47,14 +47,17 @@
 
 #include "utils/time_tool.hpp"
 #include "core/common/type.hpp"
-#include "core/common/string_server.hpp"
 
 #include "core/sparql/query.hpp"
 #include "core/sparql/absyn.hpp"
 
+#include "stringserver/string_mapping.hpp"
+
 // utils
 #include "utils/assertion.hpp"
 
+extern struct yy_buffer_state* yy_scan_string(const char* str);
+extern void yy_delete_buffer(struct yy_buffer_state* buffer);
 extern int yyparse(void);
 extern void yyrestart(FILE * input_file);
 extern FILE *yyin;
@@ -70,9 +73,9 @@ static std::string read_input(std::istream &in) {
         std::string s;
         std::getline(in, s);
         result += s;
+        result += '\n';
         if (!in.good())
             break;
-        result += '\n';
     }
 
     return result;
@@ -100,7 +103,9 @@ private:
 
     // str2id mapping for pattern constants
     // (e.g., <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> 1)
-    StringServer *str_server;
+    StringMapping *str_mapping;
+
+    int tid;
 
     /// SPARQLParser::Element to ssid
     ssid_t transfer_element(const SPARQLParser::Element &e) {
@@ -120,20 +125,22 @@ private:
             else
                 str = "\"" + e.value + "\"";
 
-            if (!str_server->exist(str)) {
+            auto map_result = str_mapping->str2id(tid, str);
+            if (!map_result.first) {
                 logstream(LOG_ERROR) << "Unknown Literal: " + str << LOG_endl;
                 throw WukongException(SYNTAX_ERROR);
             }
-            return str_server->str2id(str);
+            return map_result.second;
         }
         case SPARQLParser::Element::IRI:
         {
             std::string str = "<" + e.value + ">"; // IRI
-            if (!str_server->exist(str)) {
+            auto map_result = str_mapping->str2id(tid, str);
+            if (!map_result.first) {
                 logstream(LOG_ERROR) << "Unknown IRI: " + str << LOG_endl;
                 throw WukongException(SYNTAX_ERROR);
             }
-            return str_server->str2id(str);
+            return map_result.second;
         }
         case SPARQLParser::Element::Template:
             return PTYPE_PH;
@@ -201,7 +208,7 @@ private:
             pattern.time_interval = SPARQLQuery::TimeIntervalPattern(p.ts.timestamp, p.te.timestamp, p.ts.id, p.te.id);
             transfer_interval_type(pattern.time_interval, p.ts.type, p.te.type);
 
-            pattern.pred_type = str_server->pid2type[predicate];
+            pattern.pred_type = str_mapping->pid2type[predicate];
             if ((pattern.pred_type != (char)SID_t) && !Global::enable_vattr) {
                 logstream(LOG_ERROR) << "Must enable attribute support"
                                      << LOG_endl;
@@ -242,8 +249,10 @@ private:
         // required varaibles of SELECT clause
         for (SPARQLParser::projection_iterator iter = sp.projectionBegin();
                 iter != sp.projectionEnd();
-                iter ++)
+                iter ++) {
             sq.result.required_vars.push_back(*iter);
+            sq.result.required_vars_name.push_back(sp.getVariableName(*iter));
+        }
 
         // pattern group (patterns, union, filter, optional)
         SPARQLParser::PatternGroup group = sp.getPatterns();
@@ -314,7 +323,7 @@ private:
                 sqt.ptypes_pos.push_back(pos + 3); // object
             }
 
-            pattern.pred_type = (char)str_server->pid2type[predicate];
+            pattern.pred_type = (char)str_mapping->pid2type[predicate];
             if ((pattern.pred_type != (char)SID_t) && !Global::enable_vattr) {
                 logstream(LOG_ERROR) << "Must enable attribute support" << LOG_endl;
                 ASSERT(false);
@@ -339,23 +348,23 @@ public:
     // the stat of query parsing
     std::string strerror;
 
-    Parser(StringServer *_ss): str_server(_ss) { }
+    Parser(int tid, StringMapping *_ss): tid(tid), str_mapping(_ss) { }
 
     /// a single query
-    int parse(std::string fname, SPARQLQuery &sq) {
-        yyin = fopen(fname.c_str(),"r");
-        if (!yyin) {
-            return FILE_NOT_FOUND; // file not found
-        }
+    int parse(std::istream &in, SPARQLQuery &sq) {
         parser->clear();
         try {
-            yyrestart(yyin);
+            std::string query_text = read_input(in);
+            char* str = new char[query_text.length() + 1];
+            std::strcpy(str, query_text.c_str());
+            struct yy_buffer_state* bufferState = yy_scan_string(str);
             yyparse();
+            yy_delete_buffer(bufferState);
+            delete[] str;
             transfer(*parser, sq);
         } catch (const SPARQLParser::ParserException &e) {
             logstream(LOG_ERROR) << "Failed to parse a SPARQL query: "
                                  << e.message << LOG_endl;
-            fclose(yyin);
             return SYNTAX_ERROR;
         }
 
@@ -363,7 +372,6 @@ public:
         if (parser->isUsingCustomGrammar() && Global::enable_planner) {
             logstream(LOG_ERROR) << "Unsupported custom grammar in SPARQL planner!"
                                  << LOG_endl;
-            fclose(yyin);
             return SYNTAX_ERROR;
         }
 
@@ -372,25 +380,24 @@ public:
     }
 
     /// a class of queries
-    int parse_template(std::string fname, SPARQLQuery_Template &sqt) {
-        yyin = fopen(fname.c_str(),"r");
-        if (!yyin) {
-            return FILE_NOT_FOUND; // file not found
-        }
+    int parse_template(std::istream &in, SPARQLQuery_Template &sqt) {
         parser->clear();
         try {
-            yyrestart(yyin);
+            std::string query_text = read_input(in);
+            char* str = new char[query_text.length() + 1];
+            std::strcpy(str, query_text.c_str());
+            struct yy_buffer_state* bufferState = yy_scan_string(str);
             yyparse();
+            yy_delete_buffer(bufferState);
+            delete[] str;
             transfer_template(*parser, sqt);
         } catch (const SPARQLParser::ParserException &e) {
             logstream(LOG_ERROR) << "Failed to parse a SPARQL template: "
                                  << e.message << LOG_endl;
-            fclose(yyin);
             return SYNTAX_ERROR;
         }
 
         logstream(LOG_INFO) << "Parsing a SPARQL template is done." << LOG_endl;
-        fclose(yyin);
         return SUCCESS;
     }
 };

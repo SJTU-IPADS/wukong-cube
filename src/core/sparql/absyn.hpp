@@ -10,12 +10,11 @@
 #include <memory>
 #include <cstdlib>
 
-#include "utils/time_tool.hpp"
 #include <boost/unordered_map.hpp>
 #include <boost/algorithm/string.hpp>
 
 #include "core/common/type.hpp"
-#include "core/common/string_server.hpp"
+#include "utils/time_tool.hpp"
 
 namespace wukong {
 static bool isKeyword(char* str, const char* keyword){
@@ -26,7 +25,6 @@ static bool isKeyword(char* str, const char* keyword){
     }
     return !strcmp(str,keyword);
 }
-using namespace boost::archive;
 
 /// Intermediate struct to be placed in yacc %union
 

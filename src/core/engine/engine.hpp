@@ -30,6 +30,7 @@
 #include "core/common/global.hpp"
 #include "core/common/type.hpp"
 #include "core/common/coder.hpp"
+#include "core/common/bundle.hpp"
 
 // engine
 #include "core/engine/sparql.hpp"
@@ -51,14 +52,13 @@
 
 namespace wukong {
 
-#define BUSY_POLLING_THRESHOLD 10000000 // busy polling task queue 10s
-#define MIN_SNOOZE_TIME 10 // MIX snooze time
-#define MAX_SNOOZE_TIME 80 // MAX snooze time
-
 // a vector of pointers of all local engines
 class Engine;
 std::vector<Engine *> engines;
 
+#define BUSY_POLLING_THRESHOLD 10000000 // busy polling task queue 10s
+#define MIN_SNOOZE_TIME 10 // MIX snooze time
+#define MAX_SNOOZE_TIME 80 // MAX snooze time
 
 class Engine {
 private:
@@ -97,7 +97,7 @@ public:
     int sid;    // server id
     int tid;    // thread id
 
-    StringServer *str_server;
+    StringMapping *str_mapping;
     DGraph *graph;
     Adaptor *adaptor;
 
@@ -115,16 +115,16 @@ public:
 
     tbb::concurrent_queue<SPARQLQuery> runqueue; // task queue for sparql queries
 
-    Engine(int sid, int tid, StringServer *str_server, DGraph *graph, Adaptor *adaptor)
+    Engine(int sid, int tid, StringMapping *str_mapping, DGraph *graph, Adaptor *adaptor)
         : sid(sid), tid(tid), last_time(timer::get_usec()),
-          str_server(str_server), graph(graph), adaptor(adaptor) {
+          str_mapping(str_mapping), graph(graph), adaptor(adaptor) {
 
         coder = new Coder(sid, tid);
         msgr = new Messenger(sid, tid, adaptor);
     #ifdef TRDF_MODE
-        sparql = new TSPARQLEngine(sid, tid, str_server, graph, coder, msgr);
+        sparql = new TSPARQLEngine(sid, tid, str_mapping, graph, coder, msgr);
     #else
-        sparql = new SPARQLEngine(sid, tid, str_server, graph, coder, msgr);
+        sparql = new SPARQLEngine(sid, tid, str_mapping, graph, coder, msgr);
     #endif
         rdf = new RDFEngine(sid, tid, graph, coder, msgr);
     }
@@ -160,8 +160,9 @@ public:
             }
 
             // normal path: own runqueue
-            Bundle bundle;
-            while (adaptor->tryrecv(bundle)) {
+            std::string msg;
+            while (adaptor->tryrecv(msg)) {
+                Bundle bundle(msg);
                 if (bundle.type == SPARQL_QUERY) {
                     // to be fair, engine will handle sub-queries priority,
                     // instead of processing a new task.

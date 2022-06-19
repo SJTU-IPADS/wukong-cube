@@ -2,10 +2,18 @@
 *~
 *.exe
 *.swp
+*.tab.*
+*.yy.*
+*.output
 build/
-script/config
-script/core.bind
-script/mpd.hosts
+deps/*-install/
+deps/bliss*
+deps/tbb*
+scripts/config
+scripts/core.bind
+scripts/mpd.hosts
+python/WukongGraph.egg-info*
+python/dist*
 docs/_build/
 .vs/
 .vscode/
@@ -13,3 +21,4 @@ docs/_build/
 .settings/
 .cproject
 .project
+deps/
