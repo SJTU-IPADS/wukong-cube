@@ -28,9 +28,19 @@ py::tuple WukongGraph::ExecuteSPARQLQuery(std::string query_text, int timeout) {
 	return py::make_tuple(result_data);
 }
 
+py::tuple WukongGraph::ExecuteSPARQLQueryWithPlan(std::string query_text, std::string plan_text, int timeout) {
+	std::string result_data;
+
+    // Execute the sampling query
+    client.execute_sparql_query_with_plan(query_text, plan_text, result_data, timeout);
+
+	return py::make_tuple(result_data);
+}
+
 void init_wukong_graph(py::module &m) {
   py::class_<WukongGraph>(m, "WukongGraph")
     .def(py::init<std::string, int>())
     .def("retrieve_cluster_info", &WukongGraph::RetrieveClusterInfo, py::arg("timeout") = ConnectTimeoutMs)
-    .def("execute_sparql_query", &WukongGraph::ExecuteSPARQLQuery, py::arg("query_text"), py::arg("timeout") = ConnectTimeoutMs);
+    .def("execute_sparql_query", &WukongGraph::ExecuteSPARQLQuery, py::arg("query_text"), py::arg("timeout") = ConnectTimeoutMs)
+    .def("execute_sparql_query_with_plan", &WukongGraph::ExecuteSPARQLQueryWithPlan, py::arg("query_text"), py::arg("plan_text"), py::arg("timeout") = ConnectTimeoutMs);
 }

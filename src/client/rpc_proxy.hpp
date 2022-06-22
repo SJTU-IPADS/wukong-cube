@@ -202,7 +202,7 @@ protected:
         return 0;
     }  // end of run_single_query
 
-    int execute_sparql_task(std::string msg_in, std::string& msg_out) {
+    int execute_sparql_task(std::string msg_in, std::string plan, std::string& msg_out) {
         // forward to engines
         logstream(LOG_INFO) << "[RPCProxy] receive SPARQL_RPC request." << LOG_endl;
 
@@ -210,7 +210,7 @@ protected:
         try {
             SPARQLQuery reply;
             std::istringstream query(msg_in);
-            std::istringstream query_fmt;
+            std::istringstream query_fmt(plan);
             std::map<std::string, std::string> params;
             params["nopts"] = "1";
             params["mt_factor"] = "1";

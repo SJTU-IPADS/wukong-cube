@@ -42,6 +42,8 @@ public:
 
   py::tuple ExecuteSPARQLQuery(std::string query_text, int timeout);
 
+  py::tuple ExecuteSPARQLQueryWithPlan(std::string query_text, std::string plan_text, int timeout);
+
 private:
   RPCClient client;
 };
