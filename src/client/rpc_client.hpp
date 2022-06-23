@@ -116,7 +116,8 @@ public:
      */
     Status execute_sparql_query(std::string query, std::string& result, int timeout = ConnectTimeoutMs) {
         if (timeout <= 0) timeout = ConnectTimeoutMs;
-        int ret = cl->call(RPC_CODE::SPARQL_RPC, result, timeout, query, "");
+        std::string plan = "";
+        int ret = cl->call(RPC_CODE::SPARQL_RPC, result, timeout, query, plan);
         ASSERT_GE(ret, 0);
         return Status(ret, err_msgs[ret]);
     }
