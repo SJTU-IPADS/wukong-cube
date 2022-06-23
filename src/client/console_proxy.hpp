@@ -143,6 +143,14 @@ public:
                 stream << tmp << "\t";
             }
 
+#ifdef TRDF_MODE
+            // timestamp
+            for (int j = 0; j < q.result.get_time_col_num(); j++) {
+                int64_t time = q.result.get_time_row_col(i, j);
+                stream << time_tool::int2str(time) << "\t";
+            }
+#endif
+
             stream << std::endl;
         }
     }

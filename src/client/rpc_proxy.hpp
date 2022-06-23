@@ -101,14 +101,24 @@ protected:
 
             // result vid
             for (int j = 0; j < result.required_vars.size(); j++) {
+                ssid_t var = result.required_vars[j];
                 std::string col_name = result.required_vars_name[j];
-                int id = result.get_row_col(i, j);
-                auto map_result = str_server->id2str(tid, id);
+                auto type = result.var_type(var);
 
-                json element = {{"type", "STRING_t"}};
-                if (map_result.first) element["value"] = map_result.second;
-                else element["value"] = "ID" + std::to_string(id);
-                row[col_name] = element;
+                if (type == TIME_t) {
+                    int64_t time = result.get_time_row_col(i, result.var2col(var));
+                    json element = {{"type", "TIME_t"}};
+                    element["value"] = time_tool::int2str(time);
+                    row[col_name] = element;
+                } else {
+                    int id = result.get_row_col(i, result.var2col(var));
+                    auto map_result = str_server->id2str(tid, id);
+
+                    json element = {{"type", "STRING_t"}};
+                    if (map_result.first) element["value"] = map_result.second;
+                    else element["value"] = "ID" + std::to_string(id);
+                    row[col_name] = element;
+                }
             }
 
             // result attr
