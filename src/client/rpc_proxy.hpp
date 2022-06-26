@@ -235,6 +235,9 @@ protected:
             Bundle bundle(reply);
             // std::cout << "receive reply from engine!" << std::endl;
             
+            end = timer::get_usec();
+            json_res["latency"] = end - start;
+
             json_res["StatusMsg"] = reply.result.status_code;
             // std::cout << "[execute_sparql_task0]" << json_res.dump() << std::endl;
             if (reply.result.status_code == SUCCESS) {
@@ -249,9 +252,6 @@ protected:
                                  << ERR_MSG(ex.code()) << LOG_endl;
             return ex.code();
         }
-
-        end = timer::get_usec();
-        json_res["latency"] = end - start;
         msg_out = json_res.dump();
         return SUCCESS;
     }
