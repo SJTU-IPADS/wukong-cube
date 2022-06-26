@@ -217,6 +217,9 @@ protected:
         // forward to engines
         logstream(LOG_INFO) << "[RPCProxy] receive SPARQL_RPC request." << LOG_endl;
 
+        uint64_t start, end;
+        start = timer::get_usec();
+
         json json_res;
         try {
             SPARQLQuery reply;
@@ -247,6 +250,8 @@ protected:
             return ex.code();
         }
 
+        end = timer::get_usec();
+        json_res["latency"] = end - start;
         msg_out = json_res.dump();
         return SUCCESS;
     }
