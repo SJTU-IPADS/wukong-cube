@@ -386,7 +386,6 @@ public:
 
             rpc_clients[tid].execute_string_request(request);
             if (request.success) {
-                logstream(LOG_INFO) << "String translation success!!" << LOG_endl;
                 cache->update(vid, request.str);
                 return std::make_pair(true, request.str);
             } else {
@@ -410,7 +409,6 @@ public:
 
             rpc_clients[tid].execute_string_request(request);
             if (request.success) {
-                logstream(LOG_INFO) << "String translation success!!" << LOG_endl;
                 cache->update(request.vid, str);
                 return std::make_pair(true, request.vid);
             } else {

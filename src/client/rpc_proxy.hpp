@@ -94,6 +94,7 @@ protected:
         // the size of the result(cols, rows)
         json_result["Size"]["Col"] = result.get_col_num() + result.get_attr_col_num();
         json_result["Size"]["Row"] = result.row_num;
+        json_result["Data"]={};
 
         // the result data
         for (int i = 0; i < display_rows; i++) {
