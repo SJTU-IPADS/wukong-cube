@@ -78,11 +78,11 @@ protected:
         static const char* type_name[3] = {"INT_t", "DOUBLE_t", "FLOAT_t"};
 
         SPARQLQuery::Result& result = reply.result;
-        int display_rows = result.row_num;
+        int display_rows = result.row_num < 10 ? result.row_num : 10;
 
         if (reply.q_type == SPARQLQuery::ASK) {
             json_result["Type"] = "ASK";
-            json_result["Value"] = reply.result.row_num? true: false;
+            json_result["Value"] = reply.result.row_num ? true : false;
             return;
         } else {
             logstream(LOG_INFO) << "(last) result row num: " << reply.result.row_num
