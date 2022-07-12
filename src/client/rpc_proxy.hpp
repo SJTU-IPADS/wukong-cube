@@ -106,13 +106,16 @@ protected:
                 std::string col_name = result.required_vars_name[j];
                 auto type = result.var_type(var);
 
+#ifdef TRDF_MODE
                 if (type == TIME_t) {
-                    int64_t time = result.get_time_row_col(i, result.var2col(var));
+                    int64_t time = result.get_time_row_col(i, j);
                     json element = {{"type", "TIME_t"}};
                     element["value"] = time_tool::int2str(time);
                     row[col_name] = element;
-                } else {
-                    int id = result.get_row_col(i, result.var2col(var));
+                } else 
+#endif
+                {
+                    int id = result.get_row_col(i, j);
                     auto map_result = str_server->id2str(tid, id);
 
                     json element = {{"type", "STRING_t"}};
