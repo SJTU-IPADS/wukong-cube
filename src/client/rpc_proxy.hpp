@@ -101,21 +101,22 @@ protected:
             json row;
 
             // result vid
+            int num_time = 0;
             for (int j = 0; j < result.required_vars.size(); j++) {
                 ssid_t var = result.required_vars[j];
                 std::string col_name = result.required_vars_name[j];
                 auto type = result.var_type(var);
-
 #ifdef TRDF_MODE
                 if (type == TIME_t) {
-                    int64_t time = result.get_time_row_col(i, j);
+                    int64_t time = result.get_time_row_col(i, num_time);
                     json element = {{"type", "TIME_t"}};
                     element["value"] = time_tool::int2str(time);
                     row[col_name] = element;
+                    num_time++;
                 } else 
 #endif
                 {
-                    int id = result.get_row_col(i, j);
+                    int id = result.get_row_col(i, j - num_time);
                     auto map_result = str_server->id2str(tid, id);
 
                     json element = {{"type", "STRING_t"}};
