@@ -249,7 +249,7 @@ public:
         else newPatternGroup = oldPatternGroup;
 
         // add pattern into PatternGroup
-        (newPatternGroup->patterns).push_back(*pattern);
+        newPatternGroup->patterns.insert(newPatternGroup->patterns.begin(), *pattern);
 
         // free mem
         delete pattern;

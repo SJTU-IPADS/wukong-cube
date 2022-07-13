@@ -248,7 +248,7 @@ private:
             // check invalid elements
             ASSERT_GT(p.input_vars.size(), 0);
             // add the new pattern
-            dst.patterns.insert(dst.patterns.begin(), pattern);
+            dst.patterns.push_back(pattern);
             step++;
         }
     }
