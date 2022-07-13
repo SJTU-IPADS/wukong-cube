@@ -1,0 +1,8 @@
+7 0
+hyper_query/graphcube_30/emulator/all_complex/complex_type_hq    10
+hyper_query/graphcube_30/emulator/all_complex/complex_const_hq  10
+hyper_query/graphcube_30/emulator/all_complex/complex_exist_hq   10
+hyper_query/graphcube_30/emulator/all_complex/complex_exist_eq_hq  10
+hyper_query/graphcube_30/emulator/all_complex/complex_contain_hq  5
+hyper_query/graphcube_30/emulator/all_complex/complex_count_hq  5
+hyper_query/graphcube_30/emulator/all_complex/complex_intersect_hq   5

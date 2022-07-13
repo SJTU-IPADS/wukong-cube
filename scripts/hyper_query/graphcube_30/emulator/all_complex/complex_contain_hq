@@ -1,0 +1,22 @@
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT ?E_Host ?E_Manage WHERE {
+    ?E_Host buildin:etype %rdf:hypertype
+    ?E_Host buildin:containEdges("管理基金") ?E_Manage
+}
+
+# find a "托管基金" hyperedge and a "管理基金" hyperedge, 
+# the first one contains the latter one
+# 
+# the execution will be: 
+# (1) const-to-unknown GE
+# (2) known-to-unknown E2E
+#
+# the result should be: (13, 2)
+# 
+# origin query:
+# SELECT ?E_Host ?E_Manage WHERE {
+#     ?E_Host buildin:etype "托管基金"
+#     ?E_Manage buildin:etype "管理基金"
+# 	?E_Host buildin:containEdges ?E_Manage
+# }

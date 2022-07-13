@@ -1,0 +1,10 @@
+9 0
+hyper_query/graphcube_30/emulator/all_simple/basic_etype_hq    10
+hyper_query/graphcube_30/emulator/all_simple/basic_singleV_hq  10
+hyper_query/graphcube_30/emulator/all_simple/basic_multiV_hq   10
+hyper_query/graphcube_30/emulator/all_simple/basic_singleE_hq  10
+hyper_query/graphcube_30/emulator/all_simple/basic_multiE_hq   10
+hyper_query/graphcube_30/emulator/all_simple/basic_in_hq   5
+hyper_query/graphcube_30/emulator/all_simple/basic_contain_hq  5
+hyper_query/graphcube_30/emulator/all_simple/basic_intersectE_hq   5
+hyper_query/graphcube_30/emulator/all_simple/basic_intersectV_hq   5

@@ -1,0 +1,17 @@
+16 0
+hyper_query/graphcube_30/emulator/all_simple/basic_etype_hq    10
+hyper_query/graphcube_30/emulator/all_simple/basic_singleV_hq  10
+hyper_query/graphcube_30/emulator/all_simple/basic_multiV_hq   10
+hyper_query/graphcube_30/emulator/all_simple/basic_singleE_hq  10
+hyper_query/graphcube_30/emulator/all_simple/basic_multiE_hq   10
+hyper_query/graphcube_30/emulator/all_simple/basic_in_hq   10
+hyper_query/graphcube_30/emulator/all_simple/basic_contain_hq  10
+hyper_query/graphcube_30/emulator/all_simple/basic_intersectE_hq   10
+hyper_query/graphcube_30/emulator/all_simple/basic_intersectV_hq   10
+hyper_query/graphcube_30/emulator/all_complex/complex_type_hq    5
+hyper_query/graphcube_30/emulator/all_complex/complex_const_hq  5
+hyper_query/graphcube_30/emulator/all_complex/complex_exist_hq   5
+hyper_query/graphcube_30/emulator/all_complex/complex_exist_eq_hq  5
+hyper_query/graphcube_30/emulator/all_complex/complex_contain_hq  5
+hyper_query/graphcube_30/emulator/all_complex/complex_count_hq  5
+hyper_query/graphcube_30/emulator/all_complex/complex_intersect_hq   5

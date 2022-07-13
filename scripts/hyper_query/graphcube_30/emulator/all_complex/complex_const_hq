@@ -1,0 +1,13 @@
+SELECT ?X ?E_Holder WHERE {
+	%"董事会成员" buildin:vertices ?X
+	?X buildin:edges("持股") ?E_Holder
+}
+
+# find the “持股” hyperedges that is related to
+# the members in a "金财互联控股股份有限公司的董事会成员" hyperedge
+# 
+# the execution will be: 
+# (1) single-const-to-unknown E2V
+# (2) single-known-to-unknown V2E
+#
+# the result should be: (4, 2)

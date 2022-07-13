@@ -1,0 +1,22 @@
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT ?V_Board ?V_Manage ?E_Board ?E_Manage WHERE {
+    ?E_Board buildin:etype %rdf:hypertype
+    ?E_Board buildin:intersectEdges("高管成员", =4) ?E_Manage
+    ?E_Board buildin:vertices ?V_Board
+    ?E_Manage buildin:vertices ?V_Manage
+    ?V_Board buildin:intersectVertices("持股", 2) ?V_Manage
+}
+
+# find the vertices of a pair of intersected "董事会成员" hyperedge and "高管" hyperedge, 
+# and the vertices has to be in more than 2 "持股" hyperedges
+# 
+# the execution will be: 
+# (1) const-to-unknown GE
+# (2) known-to-unknown E2E
+# (3) known-to-unknown E2V
+# (4) known-to-unknown E2V
+# (5) known-to-known V2V
+#
+# the result should be: (663, 4)
+# 
