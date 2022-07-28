@@ -453,6 +453,20 @@ public:
 
         auto read_file = [&](std::istream& file, uint64_t& cnt, int tid, bool check_dup) {
             sid_t s, p, o;
+#ifdef TRDF_MODE
+            time_t ts, te;
+            while (file >> s >> p >> o >> ts >> te) {
+                if (this->sid == PARTITION(s)) {
+                    insert_triple_out(triple_t(s, p, o, ts, te), check_dup, tid);
+                    cnt++;
+                }
+
+                if (this->sid == PARTITION(o)) {
+                    insert_triple_in(triple_t(s, p, o, ts, te), check_dup, tid);
+                    cnt++;
+                }
+            }
+#else
             while (file >> s >> p >> o) {
                 if (this->sid == PARTITION(s)) {
                     insert_triple_out(triple_t(s, p, o), check_dup, tid);
@@ -464,6 +478,7 @@ public:
                     cnt++;
                 }
             }
+#endif
         };
 
         // step 3: load triples into gstore
