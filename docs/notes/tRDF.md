@@ -1,17 +1,20 @@
-# T-sparql extension
+# 时序RDF及时序查询
 
-#### Generate temporal RDF data
+### 生成时序RDF数据集`tLUBM`
+
+#### 生成`LUBM` ID三元组数据集
+见 [Preparing RDF datasets](INSTALL.md#preparing-rdf-datasets)
+
+#### 为三元组随机生成有效时间区间
 
 ```bash
 $cd ${WUKONG_ROOT}/datagen
 $g++ -std=c++11 add_timestamp.cpp -o add_timestamp
-$./add_timestamp /home/sl/wukong/datagen/id_lubm_3
+$./add_timestamp /path/to/dataset
 ```
-
-At this time, the triples in the `id_lubm_2` directory will become quintuples of the following format:
-
+`add_timestamp`会将ID三元组数据集替换为时序ID三元组（五元组）数据集：
 ```
-205039  23      204607  1337335004      443247361
+205039（主语ID）  23（谓词ID）     204607（宾语ID）  1337335004（有效时间区间开始时间的毫秒时间戳）      443247361（有效时间区间截止时间的毫秒时间戳）
 205039  23      204699  1544924311      1107554302
 205041  1       21      87840508        1023763187
 205041  5       131895  119772761       1484157313
@@ -22,28 +25,36 @@ At this time, the triples in the `id_lubm_2` directory will become quintuples of
 ...
 ```
 
-#### Run Wukong's temporal RDF mode
-
+### 编译及运行
 ```bash
 $cd ${WUKONG_ROOT}/scripts
 $./build.sh -DTRDF_MODE=ON
 $./run.sh 3
 ```
 
-#### Run an temporal-extended SPARQL statement
+### 时序RDF查询语言SPARQL-T
 
-```bash
-$cat sparql_query/lubm/time/time1
-PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-PREFIX xs: <http://www.w3.org/2001/XMLSchema#>
-PREFIX ub: <http://swat.cse.lehigh.edu/onto/univ-bench.owl#>
-
+```
 SELECT ?X ?Y ?s ?e FROM SNAPSHOT <2007-08-12T22:22:22> WHERE {
-        [?s, ?e] ?X  ub:memberOf  ?Y  .
+    [?s, ?e] ?X  ub:memberOf  ?Y  .
 }
 ```
 
-All query statements in the directory `${WUKONG_ROOT}/scripts/sparql_query/lubm/time/` are related to temporal RDF.
+```
+SELECT ?Y ?te WHERE {
+    [?ts, ?te) ?X memberOf X-Lab .
+    ?Y rdf:type Course .
+    ?X takesCourse ?Y .
+    FILTER(?ts=1)
+}
+```
+
+- `FROM SNAPSHOT`关键字（可选）可用来对数据集在某时间点上的快照进行查询
+- 花括号内的匹配模式是形如`[start, end) subject predicate object`的五元模式，`start`和`end`可以是常量或变量，用来获取/匹配时序三元组的有效时间数据。为了兼容标准的SPARQL语法，我们规定`[start, end)`部分是可选的。
+
+- 花括号内的过滤器可以对`start`和`end`的取值（如果是变量）按照一定条件进行过滤，例如与变量或常量的大小关系比较等。
+
+### 运行SPARQL-T查询语句
 
 ```bash
 wukong> sparql -f sparql_query/lubm/time/time1 -v 5
@@ -59,37 +70,4 @@ INFO:     The first 5 rows of results:
 4: <http://www.Department10.University1.edu/UndergraduateStudent10>     <http://www.Department10.University1.edu>      1983-01-23T06:48:03                                                  2014-04-03T11:43:57
 5: <http://www.Department10.University1.edu/UndergraduateStudent13>     <http://www.Department10.University1.edu>      2006-04-16T14:41:31                                                  2007-08-21T01:14:41
 INFO:     (average) latency: 16735 usec
-
-wukong> sparql -f sparql_query/lubm/time/time2 -v 5
-(last) result row num: 43291 , col num:2
-1: <http://www.Department15.University3.edu/Course20>   "Course20"      2008-05-07T02:45:49     1973-05-20T09:40:16
-2: <http://www.Department20.University3.edu/Course20>   "Course20"      1983-06-13T03:51:28     1982-05-12T22:03:32 
-3: <http://www.Department8.University3.edu/Course20>    "Course20"      2006-06-01T23:33:38     1984-10-08T11:37:47
-4: <http://www.Department10.University3.edu/Course20>   "Course20"      2011-09-21T17:04:24     1972-01-17T16:22:14
-5: <http://www.Department11.University3.edu/Course20>   "Course20"      1991-01-16T22:55:30     1992-07-12T12:54:16
-
-wukong> sparql -f sparql_query/lubm/time/time3 -v 5
-(last) result row num: 906 , col num:2
-1: <http://www.Department19.University3.edu/Lecturer4>  "Lecturer4"     "Lecturer4"     <http://www.Department19.University3.edu/Lecturer4>
-2: <http://www.Department15.University36.edu/Lecturer4> "Lecturer4"     "Lecturer4"     <http://www.Department15.University36.edu/Lecturer4>
-3: <http://www.Department20.University36.edu/Lecturer4> "Lecturer4"     "Lecturer4"     <http://www.Department20.University36.edu/Lecturer4>
-4: <http://www.Department11.University17.edu/Lecturer4> "Lecturer4"     "Lecturer4"     <http://www.Department11.University17.edu/Lecturer4>
-5: <http://www.Department10.University17.edu/Lecturer4> "Lecturer4"     "Lecturer4"     <http://www.Department10.University17.edu/Lecturer4>
-
-wukong> sparql -f sparql_query/lubm/time/time4 -v 5
-(last) result row num: 21135 , col num:2
-1: <http://www.Department15.University3.edu/Lecturer4>  "Lecturer4"     "Lecturer4"     <http://www.Department15.University3.edu/Lecturer4>
-2: <http://www.Department20.University3.edu/Lecturer4>  "Lecturer4"     "Lecturer4"     <http://www.Department20.University3.edu/Lecturer4>
-3: <http://www.Department8.University3.edu/Lecturer4>   "Lecturer4"     "Lecturer4"     <http://www.Department8.University3.edu/Lecturer4>
-4: <http://www.Department10.University3.edu/Lecturer4>  "Lecturer4"     "Lecturer4"     <http://www.Department10.University3.edu/Lecturer4>
-5: <http://www.Department11.University3.edu/Lecturer4>  "Lecturer4"     "Lecturer4"     <http://www.Department11.University3.edu/Lecturer4>
-
-wukong> sparql -f sparql_query/lubm/time/time5 -v 5
-(last) result row num: 43291 , col num:2
-1: <http://www.Department15.University3.edu/Course20>   "Course20"      2008-05-07T02:45:49     1973-05-20T09:40:16
-2: <http://www.Department20.University3.edu/Course20>   "Course20"      1983-06-13T03:51:28     1982-05-12T22:03:32
-3: <http://www.Department8.University3.edu/Course20>    "Course20"      2006-06-01T23:33:38     1984-10-08T11:37:47
-4: <http://www.Department10.University3.edu/Course20>   "Course20"      2011-09-21T17:04:24     1972-01-17T16:22:14
-5: <http://www.Department11.University3.edu/Course20>   "Course20"      1991-01-16T22:55:30     1992-07-12T12:54:16
 ```
-

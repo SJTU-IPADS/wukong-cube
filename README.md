@@ -20,6 +20,7 @@ For more details see [Wukong Project](http://ipads.se.sjtu.edu.cn/projects/wukon
 * [Tutorials](docs/notes/TUTORIALS.md)
 * [Manual](docs/notes/COMMANDS.md)
 * [GPU extension](docs/notes/GPU.md)
+* [Temporal extension](docs/notes/tRDF.md)
 * [Q&A](docs/notes/QA.md)
 
 
